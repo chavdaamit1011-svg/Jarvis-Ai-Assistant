@@ -8,8 +8,11 @@ const knowledgeChunkSchema = new Schema({
   embeddingDimension: { type: Number, required: true, min: 1 },
   metadata: {
     documentTitle: { type: String, required: true, maxlength: 120 },
-    sourceType: { type: String, enum: ['manual', 'text'], required: true },
+    sourceType: { type: String, enum: ['manual', 'pdf', 'docx', 'txt'], required: true },
     visibility: { type: String, enum: ['private', 'public'], required: true },
+    pageNumber: { type: Number, min: 1 },
+    sectionHeading: { type: String, maxlength: 200 },
+    entities: { type: Schema.Types.Mixed, default: {} },
   },
   tokenEstimate: { type: Number, required: true, min: 0 },
 }, { timestamps: true, versionKey: false });

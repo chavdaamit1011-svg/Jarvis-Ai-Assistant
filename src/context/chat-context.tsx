@@ -23,7 +23,7 @@ const titleFor = (text: string) => { const title = text.replace(/\s+/g, ' ').tri
 async function api<T>(url: string, init?: RequestInit): Promise<T> { const response = await fetch(url, init); const data = await response.json().catch(() => null) as T & { error?: string }; if (!response.ok) throw new Error(data?.error || 'Database request failed.'); return data; }
 
 export function ChatProvider({ children }: { children: React.ReactNode }) {
-  const [chats, setChats] = useState<Conversation[]>([]); const [activeChatId, setActiveChatId] = useState<string | null>(null); const [searchQuery, setSearchQuery] = useState(''); const [knowledgeMode, setKnowledgeMode] = useState<KnowledgeMode>('off');
+  const [chats, setChats] = useState<Conversation[]>([]); const [activeChatId, setActiveChatId] = useState<string | null>(null); const [searchQuery, setSearchQuery] = useState(''); const [knowledgeMode, setKnowledgeMode] = useState<KnowledgeMode>('public');
   const [persona, setPersona] = useState<PersonaMode>('jarvis'); const [isStreaming, setIsStreaming] = useState(false); const [isSidebarOpen, setIsSidebarOpen] = useState(true); const [isSettingsOpen, setIsSettingsOpen] = useState(false);
   const [settings, setSettings] = useState<UserSettings>({ theme: 'dark', defaultModel: DEFAULT_MODEL, persona: 'jarvis', systemPrompt: '', soundEffects: true, streamSpeed: 25, sendOnEnter: true, temperature: .7 });
   const abortRef = useRef<AbortController | null>(null);
@@ -37,7 +37,9 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const stream = async (conversation: Conversation, assistantId: string, history: Message[]) => {
     const controller = new AbortController(); abortRef.current = controller; setIsStreaming(true); let content = '';
     try {
-      const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ messages: history.slice(-MAX_HISTORY).map(({ role, content: messageContent }) => ({ role, content: messageContent })), mode: conversation.assistantMode, knowledgeMode }), signal: controller.signal });
+      const chatPayload = { messages: history.slice(-MAX_HISTORY).map(({ role, content: messageContent }) => ({ role, content: messageContent })), mode: conversation.assistantMode, knowledgeMode };
+      if (process.env.NODE_ENV !== 'production') console.info('[Chat] selected knowledgeMode:', knowledgeMode);
+      const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(chatPayload), signal: controller.signal });
       if (!response.ok) throw new Error(((await response.json().catch(() => null)) as { error?: string } | null)?.error || 'AI request failed.');
       let sources: Message['sources'] = []; try { const raw = response.headers.get('X-Jarvis-Knowledge-Sources'); sources = raw ? JSON.parse(decodeURIComponent(raw)) : []; } catch { sources = []; }
       if (!response.body) throw new Error('No stream body received.'); const reader = response.body.getReader(); const decoder = new TextDecoder();
