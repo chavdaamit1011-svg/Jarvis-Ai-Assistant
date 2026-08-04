@@ -4,4 +4,7 @@ export { retrieveContext } from './retrieve-context';
 export { buildContext } from './context-builder';
 export { RAG_CONFIG } from './rag-config';
 export { extractExactValues } from './exact-values';
+export { parseQueryIntent } from './query-intent';
+export type { ProfileIntent, QueryIntent } from './query-intent';
+export { lookupStructuredValue } from './structured-lookup';
 export type { KnowledgeVisibility, RetrievedChunk, RetrievedContext, TextChunk } from './rag-types';

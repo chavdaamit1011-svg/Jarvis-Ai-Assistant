@@ -8,7 +8,7 @@ import {
   TOKEN_LIMITS,
 } from '@/lib/ai/constants';
 import { ASSISTANT_MODES, buildSystemPrompt } from '@/lib/ai/prompts';
-import { retrieveContext } from '@/lib/ai/rag';
+import { lookupStructuredValue, retrieveContext } from '@/lib/ai/rag';
 
 export const runtime = 'nodejs';
 
@@ -73,6 +73,15 @@ export async function POST(req: Request) {
         const lastUserIndex = [...messages].map((message) => message.role).lastIndexOf('user');
         if (lastUserIndex >= 0) {
           const latestQuestion = messages[lastUserIndex].content;
+          const exact = await lookupStructuredValue(latestQuestion);
+          if (exact && 'ambiguous' in exact) return new Response('Multiple matching people were found. Please specify the full person name.', { headers: { 'Content-Type': 'text/plain; charset=utf-8' } });
+          if (exact && 'missing' in exact) {
+            if (exact.intent === 'linkedin_profile') return new Response(`Uploaded knowledge me ${exact.personName ?? 'requested person'} ka LinkedIn profile available nahi hai.`, { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Jarvis-Knowledge-Sources': encodeURIComponent('[]') } });
+          }
+          if (exact && 'value' in exact) {
+            const label = exact.intent === 'linkedin_profile' ? 'LinkedIn URL' : exact.intent === 'github_profile' ? 'GitHub URL' : exact.intent === 'portfolio_url' ? 'Portfolio URL' : exact.intent === 'email' ? 'Email' : exact.intent === 'phone' ? 'Phone number' : exact.intent === 'owner' ? 'Owner' : 'Role';
+            return new Response(`${label}: ${exact.value}`, { headers: { 'Content-Type': 'text/plain; charset=utf-8', 'X-Jarvis-Knowledge-Sources': encodeURIComponent(JSON.stringify([{ ...exact.source, score: 1 }])) } });
+          }
           const retrieved = await retrieveContext({ query: latestQuestion, limit: 5, visibility: parsed.data.knowledgeMode });
           if (process.env.NODE_ENV !== 'production') {
             console.info('[API /api/chat] RAG retrieval', {
