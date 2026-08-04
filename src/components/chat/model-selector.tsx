@@ -4,10 +4,19 @@ import React, { useState, useRef, useEffect } from 'react';
 import { AI_MODELS } from '@/lib/mock-data';
 import { useChat } from '@/context/chat-context';
 import { AIModelId } from '@/types/chat';
-import { ChevronDown, Sparkles, Zap, ShieldAlert, Cpu, Check } from 'lucide-react';
+import type { AssistantMode } from '@/lib/ai/prompts';
+import { ChevronDown, Zap, Check } from 'lucide-react';
+
+const ASSISTANT_MODE_OPTIONS: Array<{ id: AssistantMode; label: string }> = [
+  { id: 'general', label: 'General' },
+  { id: 'coding', label: 'Coding' },
+  { id: 'research', label: 'Research' },
+  { id: 'marketing', label: 'Marketing' },
+  { id: 'medical-information', label: 'Medical info' },
+];
 
 export function ModelSelector() {
-  const { activeModelId, setActiveModelId, setPersona } = useChat();
+  const { activeModelId, setActiveModelId, assistantMode, setAssistantMode, setPersona } = useChat();
   const [isOpen, setIsOpen] = useState(false);
   const dropdownRef = useRef<HTMLDivElement>(null);
 
@@ -91,6 +100,26 @@ export function ModelSelector() {
                 </button>
               );
             })}
+          </div>
+          <div className="mt-2 border-t border-[var(--border-color)]/30 px-2 pt-2">
+            <div className="px-1 pb-1.5 text-[10px] font-mono font-bold text-[var(--text-muted)] uppercase tracking-wider">
+              Assistant mode
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              {ASSISTANT_MODE_OPTIONS.map((mode) => (
+                <button
+                  key={mode.id}
+                  onClick={() => setAssistantMode(mode.id)}
+                  className={`rounded-lg px-2 py-1.5 text-left text-[10px] font-mono transition-colors ${
+                    assistantMode === mode.id
+                      ? 'bg-[var(--accent-cyan)]/10 text-[var(--accent-cyan)] border border-[var(--accent-cyan)]/40'
+                      : 'text-[var(--text-secondary)] hover:bg-[var(--bg-tertiary)] border border-transparent'
+                  }`}
+                >
+                  {mode.label}
+                </button>
+              ))}
+            </div>
           </div>
         </div>
       )}

@@ -35,7 +35,7 @@ export function ChatArea() {
     setShowScrollBottom(isUp);
   };
 
-  const hasMessages = activeChat && activeChat.messages.length > 0;
+  const hasMessages = activeChat.messages.length > 0;
 
   return (
     <div className="flex flex-col flex-1 h-screen overflow-hidden bg-[var(--bg-primary)]">

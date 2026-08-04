@@ -1,6 +1,45 @@
-export type Role = 'user' | 'assistant' | 'system';
+import type { AssistantMode } from '@/lib/ai/prompts';
 
-export type AIModelId = 'jarvis-v4' | 'ultron-prime' | 'claude-3-5' | 'deepseek-r1' | 'gpt-4o' | 'cursor-small';
+export type Role = 'user' | 'assistant';
+
+export const AI_MODEL_IDS = ['jarvis-v4', 'ultron-prime', 'claude-3-5', 'deepseek-r1', 'gpt-4o', 'cursor-small'] as const;
+export type AIModelId = (typeof AI_MODEL_IDS)[number];
+
+export type MessageStatus = 'submitted' | 'streaming' | 'complete' | 'stopped' | 'error';
+
+export interface MessageError {
+  code?: string;
+  message: string;
+  retryable: boolean;
+}
+
+/** Local, text-only representation compatible with this app's AI SDK text stream. */
+export interface Message {
+  id: string;
+  role: Role;
+  content: string;
+  createdAt: string;
+  status: MessageStatus;
+  error?: MessageError;
+  model?: AIModelId;
+  isEdited?: boolean;
+  likeStatus?: 'liked' | 'disliked' | null;
+}
+
+export interface Conversation {
+  id: string;
+  title: string;
+  messages: Message[];
+  createdAt: string;
+  updatedAt: string;
+  model: AIModelId;
+  assistantMode: AssistantMode;
+  isPinned: boolean;
+  isArchived: boolean;
+}
+
+/** @deprecated Use Conversation. Kept as an alias while existing UI components migrate. */
+export type ChatThread = Conversation;
 
 export interface AIModel {
   id: AIModelId;
@@ -14,29 +53,6 @@ export interface AIModel {
 }
 
 export type PersonaMode = 'jarvis' | 'ultron' | 'friday' | 'edith';
-
-export interface Message {
-  id: string;
-  role: Role;
-  content: string;
-  timestamp: string;
-  modelId?: AIModelId;
-  isStreaming?: boolean;
-  isEdited?: boolean;
-  likeStatus?: 'liked' | 'disliked' | null;
-}
-
-export interface ChatThread {
-  id: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  pinned?: boolean;
-  category: 'Today' | 'Yesterday' | 'Previous 7 Days' | 'Older';
-  messages: Message[];
-  modelId: AIModelId;
-}
-
 export type ThemeMode = 'dark' | 'light' | 'ultron';
 
 export interface UserSettings {
@@ -45,7 +61,7 @@ export interface UserSettings {
   persona: PersonaMode;
   systemPrompt: string;
   soundEffects: boolean;
-  streamSpeed: number; // ms per chunk
+  streamSpeed: number;
   sendOnEnter: boolean;
   temperature: number;
 }

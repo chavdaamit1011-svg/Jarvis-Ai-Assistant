@@ -2,13 +2,14 @@
 
 import React, { useState } from 'react';
 import ReactMarkdown from 'react-markdown';
+import type { ExtraProps } from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { Message } from '@/types/chat';
 import { useChat } from '@/context/chat-context';
+import { formatTimestamp } from '@/lib/utils';
 import { CodeBlock } from './code-block';
 import { TypingIndicator } from './typing-indicator';
 import {
-  Bot,
   Check,
   Copy,
   Edit3,
@@ -89,14 +90,14 @@ export function ChatItem({ message }: ChatItemProps) {
             <span className="font-semibold text-[var(--text-primary)]">
               {isUser ? 'Stark User' : persona === 'ultron' ? 'ULTRON Prime' : 'J.A.R.V.I.S.'}
             </span>
-            {message.modelId && (
+            {message.model && (
               <span className="px-2 py-0.5 rounded-full bg-[var(--bg-tertiary)] text-[var(--accent-cyan)] border border-[var(--border-color)]">
-                {message.modelId}
+                {message.model}
               </span>
             )}
             {message.isEdited && <span className="italic text-[10px]">(edited)</span>}
           </div>
-          <span className="text-[11px] font-mono">{message.timestamp}</span>
+            <span className="text-[11px] font-mono">{formatTimestamp(message.createdAt)}</span>
         </div>
 
         {/* User Inline Edit Form */}
@@ -129,7 +130,8 @@ export function ChatItem({ message }: ChatItemProps) {
             <ReactMarkdown
               remarkPlugins={[remarkGfm]}
               components={{
-                code({ node, inline, className, children, ...props }: any) {
+                code({ node: _node, inline, className, children, ...props }: React.ComponentPropsWithoutRef<'code'> & ExtraProps & { inline?: boolean }) {
+                  void _node;
                   const match = /language-(\w+)/.exec(className || '');
                   const codeString = String(children).replace(/\n$/, '');
 
@@ -150,12 +152,12 @@ export function ChatItem({ message }: ChatItemProps) {
             </ReactMarkdown>
 
             {/* Show Streaming Typing Indicator */}
-            {message.isStreaming && <TypingIndicator />}
+            {message.status === 'streaming' && <TypingIndicator />}
           </div>
         )}
 
         {/* Message Action Toolbar */}
-        {!isEditing && !message.isStreaming && (
+        {!isEditing && message.status !== 'streaming' && (
           <div className="flex items-center gap-1 pt-2 opacity-80 group-hover:opacity-100 transition-opacity text-xs text-[var(--text-muted)]">
             <button
               onClick={handleCopy}

@@ -14,6 +14,7 @@ export function Sidebar() {
     setIsSidebarOpen,
     createNewChat,
     persona,
+    isStreaming,
   } = useChat();
 
   if (!isSidebarOpen) return null;
@@ -64,7 +65,8 @@ export function Sidebar() {
         <div className="p-3 space-y-2">
           <button
             onClick={() => createNewChat()}
-            className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-gradient-to-r from-[var(--accent-cyan)] to-blue-600 text-slate-950 font-semibold font-mono text-xs shadow-lg hover:opacity-95 transition-all duration-200"
+            disabled={isStreaming}
+            className="w-full flex items-center justify-between px-4 py-2.5 rounded-xl bg-gradient-to-r from-[var(--accent-cyan)] to-blue-600 text-slate-950 font-semibold font-mono text-xs shadow-lg hover:opacity-95 disabled:opacity-50 disabled:cursor-not-allowed transition-all duration-200"
           >
             <div className="flex items-center gap-2">
               <Plus size={16} />

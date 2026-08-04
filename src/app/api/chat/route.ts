@@ -4,10 +4,10 @@ import { z } from 'zod';
 import {
   CHAT_LIMITS,
   DEFAULT_MODEL_ID,
-  SYSTEM_PROMPT_JARVIS,
   TEMPERATURE_DEFAULTS,
   TOKEN_LIMITS,
 } from '@/lib/ai/constants';
+import { ASSISTANT_MODES, buildSystemPrompt } from '@/lib/ai/prompts';
 
 export const runtime = 'nodejs';
 
@@ -21,6 +21,7 @@ const chatRequestSchema = z.object({
     )
     .min(1)
     .max(CHAT_LIMITS.maxHistoryItems),
+  mode: z.enum(ASSISTANT_MODES).optional().default('general'),
 });
 
 function jsonError(error: string, status: number) {
@@ -54,10 +55,15 @@ export async function POST(req: Request) {
 
   try {
     const groq = createGroq({ apiKey });
+    const system = buildSystemPrompt({
+      mode: parsed.data.mode,
+      preferredLanguage: 'same-as-user',
+      responseStyle: 'balanced',
+    });
     const result = streamText({
       model: groq(DEFAULT_MODEL_ID),
       messages: parsed.data.messages,
-      system: SYSTEM_PROMPT_JARVIS,
+      system,
       temperature: TEMPERATURE_DEFAULTS.default,
       maxOutputTokens: TOKEN_LIMITS.defaultMaxTokens,
       abortSignal: req.signal,

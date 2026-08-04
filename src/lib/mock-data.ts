@@ -1,4 +1,4 @@
-import { AIModel, ChatThread, SuggestedPrompt } from '@/types/chat';
+import { AIModel, SuggestedPrompt } from '@/types/chat';
 
 export const AI_MODELS: AIModel[] = [
   {
@@ -93,7 +93,8 @@ export const SUGGESTED_PROMPTS: SuggestedPrompt[] = [
   },
 ];
 
-export const MOCK_CHAT_HISTORY: ChatThread[] = [
+// Legacy design fixture only. Conversation state no longer reads this data.
+export const MOCK_CHAT_HISTORY = [
   {
     id: 'chat-stark-1',
     title: 'Arc Reactor Power Optimization',
