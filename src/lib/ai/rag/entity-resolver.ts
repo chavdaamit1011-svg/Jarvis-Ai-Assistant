@@ -41,8 +41,8 @@ function matchesEntity(query: string, name: string) {
 }
 
 function contentNames(content: string) {
-  const labelled = [...content.matchAll(/(?:^|\n)\s*(?:name|full name)\s*:\s*([A-Za-z]+(?:\s+[A-Za-z]+){1,2})/gi)].map((match) => match[1]);
-  const uppercase = [...content.matchAll(/(?:^|\n)\s*([A-Z]{2,}(?:\s+[A-Z]{2,}){1,2})\s*(?:\n|$)/g)].map((match) => titleCase(match[1]));
+  const labelled = [...content.matchAll(/(?:^|\n)\s*(?:name|full name)\s*:\s*([A-Za-z]+(?:[ ]+[A-Za-z]+){1,2})/gi)].map((match) => match[1]);
+  const uppercase = [...content.matchAll(/(?:^|\n)\s*([A-Z]{2,}(?:[ ]+[A-Z]{2,}){1,2})\s*(?:\n|$)/g)].map((match) => titleCase(match[1])).filter((name) => !/\b(?:summary|education|experience|skills|project|contact)\b/i.test(name));
   return [...new Set([...labelled, ...uppercase])];
 }
 

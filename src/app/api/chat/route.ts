@@ -13,6 +13,7 @@ import { aggregateAnswerContext, lookupStructuredValue, resolveKnowledgeEntities
 import { parseQueryDeterministically } from '@/lib/ai/query-understanding';
 import { EXACT_VALUE_FIELDS, requiresCurrentInformation, routeAnswer, type AnswerStrategy } from '@/lib/ai/router';
 import { createReliableGroqTextStream } from '@/lib/ai/groq/reliable-stream';
+import { getEntityProfile } from '@/lib/ai/knowledge-index';
 
 export const runtime = 'nodejs';
 
@@ -48,6 +49,10 @@ function validateGenerationMessages(messages: Array<{ role: 'user' | 'assistant'
   const valid = messages.every((message) => (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string' && message.content.trim().length > 0);
   if (!valid) throw new Error('Invalid generation message payload.');
   return { messageCount: messages.length, contentLengths: messages.map((message) => message.content.length) };
+}
+
+function joinNatural(values: string[]) {
+  return values.length > 1 ? `${values.slice(0, -1).join(', ')} aur ${values.at(-1)}` : values[0] ?? '';
 }
 
 function jsonError(error: string, status: number) {
@@ -126,6 +131,20 @@ export async function POST(req: Request) {
               requestedField: understanding.requestedField === 'unknown' ? 'summary' : understanding.requestedField,
               confidence: Math.max(understanding.confidence, 0.9),
             };
+            const profile = await getEntityProfile(entityResolution.resolved.name);
+            if (profile && understanding.requestedField === 'summary') {
+              const profession = profile.facts.profession?.[0];
+              const technologies = profile.facts.technologies ?? [];
+              const ownerOf = profile.facts.ownerOf?.[0];
+              const sentences = [profession ? `${profile.canonicalName} ek ${profession} hain` : `${profile.canonicalName} ke baare mein uploaded knowledge mein profile information available hai`];
+              if (technologies.length) sentences[0] += ` jo ${joinNatural(technologies)} par kaam karte hain.`;
+              else sentences[0] += '.';
+              if (ownerOf) sentences.push(`Ve ${ownerOf} ke owner hain.`);
+              if (profile.conflicts.length) sentences.push(`Uploaded sources mein ${profile.conflicts.map((conflict) => conflict.field).join(', ')} ke baare mein conflicting information hai.`);
+              const profileSources: Source[] = entityResolution.resolved.documentTitles.map((documentTitle) => ({ documentTitle, chunkIndex: 0, score: 1 }));
+              if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] selected routing path: entity_profile', { entity: profile.canonicalName, factFields: Object.keys(profile.facts), conflicts: profile.conflicts.length });
+              return new Response(sentences.join(' '), { headers: answerHeaders({ answerSource: 'knowledge', usedFallback: false }, profileSources) });
+            }
           }
           const isExactLookup = understanding.intent === 'exact_value_lookup' && EXACT_VALUE_FIELDS.has(understanding.requestedField);
           if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] query understanding', { parsedIntent: understanding.intent, requestedField: understanding.requestedField, entityName: understanding.entityName, answerStrategy });

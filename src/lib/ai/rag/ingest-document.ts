@@ -8,6 +8,7 @@ import { chunkText, cleanKnowledgeText } from './chunk-text';
 import { RAG_CONFIG } from './rag-config';
 import type { KnowledgeVisibility } from './rag-types';
 import { extractEntities } from './entity-extraction';
+import { indexReadyDocument } from '@/lib/ai/knowledge-index';
 
 export async function ingestDocument(input: { title: string; content: string; description?: string; visibility: KnowledgeVisibility; sourceType?: 'manual'|'pdf'|'docx'|'txt'; file?: { name: string; type: 'pdf'|'docx'|'txt'; mimeType: string; size: number; pageCount?: number; extractionMethod: string } }) {
   const title = input.title.trim(); const content = cleanKnowledgeText(input.content);
@@ -24,6 +25,7 @@ export async function ingestDocument(input: { title: string; content: string; de
     for (let offset = 0; offset < chunks.length; offset += RAG_CONFIG.embeddingBatchSize) embeddings.push(...await generateEmbeddings(chunks.slice(offset, offset + RAG_CONFIG.embeddingBatchSize).map((chunk) => chunk.content)));
     await KnowledgeChunk.insertMany(chunks.map((chunk, index) => ({ documentId: document._id, chunkIndex: chunk.chunkIndex, content: chunk.content, entities: extractEntities(chunk.content), embedding: embeddings[index], embeddingDimension: embeddings[index].length, metadata: { documentTitle: title, sourceType, visibility: input.visibility }, tokenEstimate: chunk.estimatedTokenCount })));
     document.status = 'ready'; document.processingStage = 'ready'; document.chunkCount = chunks.length; document.embeddingModel = EMBEDDING_MODEL_ID; await document.save();
+    await indexReadyDocument(String(document._id));
     return document;
   } catch (error) {
     await KnowledgeChunk.deleteMany({ documentId: document._id }).catch(() => undefined);
