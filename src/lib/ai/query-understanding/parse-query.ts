@@ -1,2 +1,101 @@
-import { parseQueryIntent } from '@/lib/ai/rag/query-intent'; import { normalizeQuery } from './normalize-query'; import type { QueryUnderstanding } from './types';
-export function parseQueryDeterministically(query:string):QueryUnderstanding { const parsed=parseQueryIntent(query); const field=parsed.intent==='linkedin_profile'?'linkedin_url':parsed.intent==='github_profile'?'github_url':parsed.intent==='portfolio_url'?'portfolio_url':parsed.intent==='email'?'email':parsed.intent==='phone'?'phone':parsed.intent==='owner'?'owner':parsed.intent==='role'?'role':parsed.intent==='skills'?'skills':parsed.intent==='education'?'education':parsed.intent==='project'?'projects':'unknown'; return {intent:field==='unknown'?'general_question':['skills','education','projects'].includes(field)?'descriptive_question':'exact_value_lookup',entityType:parsed.personName?'person':'unknown',entityName:parsed.personName??null,requestedField:field,platform:parsed.platform??'unknown',language:'und',confidence:parsed.confidence,normalizedQuery:normalizeQuery(query)}; }
+import { queryUnderstandingSchema } from './schema';
+import { normalizeQuery } from './normalize-query';
+import type { QueryUnderstanding } from './types';
+
+type RequestedField = QueryUnderstanding['requestedField'];
+type Platform = QueryUnderstanding['platform'];
+
+const STOP_WORDS = new Set([
+  'a', 'an', 'and', 'answer', 'app', 'batao', 'by', 'ch', 'che', 'contact',
+  'do', 'education', 'email', 'explain', 'for', 'founder', 'git', 'github', 'give', 'hai', 'hain', 'he', 'hub', 'in', 'is', 'ka',
+  'ke', 'ki', 'kis', 'kya', 'link', 'linkdin', 'linkedin', 'lindin', 'linkdn',
+  'ni', 'no', 'of', 'on', 'owner', 'phone', 'portfolio', 'profile', 'project', 'projects', 'role',
+  'show', 'skill', 'skills', 'summary', 'su', 'shu', 'the', 'to', 'url', 'what',
+  'who', 'with', 'website', 'web', 'your', 'karo',
+]);
+
+const LINKEDIN_TERMS = ['linkedin', 'linked', 'linkdin', 'lindin', 'linkdn', 'linkedn'];
+const GITHUB_TERMS = ['github', 'git', 'gitub', 'githb'];
+const PORTFOLIO_TERMS = ['portfolio', 'personalpage'];
+const WEBSITE_TERMS = ['website', 'web', 'site', 'webpage'];
+const PROFILE_TERMS = ['profile', 'proflie', 'ptofile', 'profle', 'profil', 'account', 'url', 'link'];
+
+function editDistance(left: string, right: string) {
+  const matrix = Array.from({ length: left.length + 1 }, (_, index) => [index]);
+  for (let column = 1; column <= right.length; column += 1) matrix[0][column] = column;
+  for (let row = 1; row <= left.length; row += 1) {
+    for (let column = 1; column <= right.length; column += 1) {
+      matrix[row][column] = Math.min(
+        matrix[row - 1][column] + 1,
+        matrix[row][column - 1] + 1,
+        matrix[row - 1][column - 1] + (left[row - 1] === right[column - 1] ? 0 : 1),
+      );
+    }
+  }
+  return matrix[left.length][right.length];
+}
+
+function matchesTerm(term: string, aliases: string[]) {
+  return aliases.some((alias) => term === alias || (term.length >= 5 && editDistance(term, alias) <= 2));
+}
+
+function titleCase(value: string) {
+  return value.replace(/\b\p{L}/gu, (character) => character.toUpperCase());
+}
+
+function detectEntityName(terms: string) {
+  const candidates = terms
+    .split(' ')
+    .filter((term) => term.length > 1 && !STOP_WORDS.has(term) && !matchesTerm(term, PROFILE_TERMS));
+
+  if (!candidates.length) return null;
+  // Profile/contact requests normally name a person using one to three words.
+  return titleCase(candidates.slice(-3).join(' '));
+}
+
+function fieldFromQuery(normalized: string): { field: RequestedField; platform: Platform; confidence: number } {
+  const terms = normalized.split(' ').filter(Boolean);
+  const hasLinkedIn = terms.some((term) => matchesTerm(term, LINKEDIN_TERMS));
+  const hasGitHub = terms.some((term) => matchesTerm(term, GITHUB_TERMS));
+  const hasPortfolio = terms.some((term) => matchesTerm(term, PORTFOLIO_TERMS));
+  const hasWebsite = terms.some((term) => matchesTerm(term, WEBSITE_TERMS));
+  const hasProfileWord = terms.some((term) => matchesTerm(term, PROFILE_TERMS));
+
+  if (hasLinkedIn) return { field: 'linkedin_url', platform: 'linkedin', confidence: hasProfileWord ? 0.98 : 0.9 };
+  if (hasGitHub) return { field: 'github_url', platform: 'github', confidence: hasProfileWord ? 0.98 : 0.9 };
+  if (hasPortfolio) return { field: 'portfolio_url', platform: 'portfolio', confidence: 0.95 };
+  if (hasWebsite) return { field: 'website_url', platform: 'website', confidence: 0.88 };
+  if (/\b(?:email|e mail|mail id)\b/.test(normalized)) return { field: 'email', platform: 'unknown', confidence: 0.95 };
+  if (/\b(?:phone|mobile|number|contact)\b/.test(normalized)) return { field: 'phone', platform: 'unknown', confidence: 0.92 };
+  if (/\b(?:owner|founder|creator|built by|banaya|banaya hai)\b/.test(normalized)) return { field: 'owner', platform: 'unknown', confidence: 0.9 };
+  if (/\b(?:role|designation|position|job title)\b/.test(normalized)) return { field: 'role', platform: 'unknown', confidence: 0.9 };
+  if (/\b(?:skills?|technologies|tech stack)\b/.test(normalized)) return { field: 'skills', platform: 'unknown', confidence: 0.9 };
+  if (/\b(?:education|study|college|university|degree)\b/.test(normalized)) return { field: 'education', platform: 'unknown', confidence: 0.9 };
+  if (/\b(?:projects?|project work|application|software)\b/.test(normalized)) return { field: 'projects', platform: 'unknown', confidence: 0.88 };
+  if (/\b(?:summary|about|introduce|introduction)\b/.test(normalized)) return { field: 'summary', platform: 'unknown', confidence: 0.82 };
+  return { field: 'unknown', platform: 'unknown', confidence: 0.25 };
+}
+
+/**
+ * Cheap, deterministic query-understanding fallback. Its output is validated
+ * before it is allowed to influence retrieval. A hosted classifier can replace
+ * this function later without changing callers.
+ */
+export function parseQueryDeterministically(query: string): QueryUnderstanding {
+  const normalizedQuery = normalizeQuery(query);
+  const detected = fieldFromQuery(normalizedQuery);
+  const isExact = ['linkedin_url', 'github_url', 'portfolio_url', 'website_url', 'email', 'phone', 'owner', 'role'].includes(detected.field);
+  const isDescriptive = ['skills', 'education', 'projects', 'summary'].includes(detected.field);
+  const result: QueryUnderstanding = {
+    intent: isExact ? 'exact_value_lookup' : isDescriptive ? 'descriptive_question' : 'general_question',
+    entityType: detectEntityName(normalizedQuery) ? 'person' : 'unknown',
+    entityName: detectEntityName(normalizedQuery),
+    requestedField: detected.field,
+    platform: detected.platform,
+    language: 'und',
+    confidence: detected.confidence,
+    normalizedQuery,
+  };
+
+  return queryUnderstandingSchema.parse(result);
+}
