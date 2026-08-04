@@ -19,6 +19,7 @@ type StoredEntities = {
 const EXACT_FIELDS = new Set<QueryUnderstanding['requestedField']>([
   'linkedin_url', 'github_url', 'portfolio_url', 'website_url', 'email', 'phone', 'owner', 'role',
 ]);
+const PROFILE_LINK_FIELDS = ['linkedin_url', 'github_url', 'portfolio_url', 'website_url'] as const;
 const normalize = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ' ').replace(/\s+/g, ' ').trim();
 
 function valuesForField(entities: StoredEntities, field: QueryUnderstanding['requestedField']) {
@@ -90,6 +91,50 @@ export async function lookupStructuredValue(understanding: QueryUnderstanding) {
     value: selected.value,
     field: understanding.requestedField,
     personName: understanding.entityName ?? selected.entities.personNames?.[0] ?? null,
+    source: {
+      documentId: String(selected.document._id),
+      documentTitle: selected.document.title,
+      chunkId: sourceChunk ? String(sourceChunk._id) : null,
+      chunkIndex: sourceChunk?.chunkIndex ?? 0,
+    },
+  };
+}
+
+/**
+ * A deliberately narrow escape hatch for a vague link request.  It is safe to
+ * answer only when the entire public knowledge base contains one distinct
+ * profile-link value; otherwise the caller must ask a clarification question.
+ */
+export async function lookupOnlyPublicProfileLink() {
+  await connectToDatabase();
+  const documents = await KnowledgeDocument.find({ status: 'ready', visibility: 'public' })
+    .select('title entities originalContent')
+    .lean();
+  const chunks = await KnowledgeChunk.find({
+    documentId: { $in: documents.map((document) => document._id) },
+    'metadata.visibility': 'public',
+  }).select('documentId chunkIndex content').lean();
+  const chunksByDocument = new Map<string, typeof chunks>();
+  for (const chunk of chunks) {
+    const id = String(chunk.documentId);
+    chunksByDocument.set(id, [...(chunksByDocument.get(id) ?? []), chunk]);
+  }
+
+  const candidates = documents.flatMap((document) => {
+    const storedEntities = (document.entities ?? {}) as StoredEntities;
+    const entities = Object.keys(storedEntities).length ? storedEntities : extractEntities(document.originalContent ?? '');
+    const documentChunks = chunksByDocument.get(String(document._id)) ?? [];
+    return PROFILE_LINK_FIELDS.flatMap((field) => valuesForField(entities, field).map((value) => ({ document, entities, documentChunks, field, value })));
+  });
+  const uniqueCandidates = [...new Map(candidates.map((candidate) => [`${candidate.field}:${candidate.value}`, candidate])).values()];
+  if (uniqueCandidates.length !== 1) return null;
+
+  const selected = uniqueCandidates[0];
+  const sourceChunk = selected.documentChunks.find((chunk) => chunk.content.includes(selected.value));
+  return {
+    value: selected.value,
+    field: selected.field,
+    personName: selected.entities.personNames?.[0] ?? null,
     source: {
       documentId: String(selected.document._id),
       documentTitle: selected.document.title,

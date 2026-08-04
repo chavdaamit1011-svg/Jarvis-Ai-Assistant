@@ -95,6 +95,10 @@ export function parseQueryDeterministically(query: string): QueryUnderstanding {
     language: 'und',
     confidence: detected.confidence,
     normalizedQuery,
+    isAmbiguous: false,
+    missingInformation: [],
+    possibleIntents: [],
+    clarificationQuestion: null,
   };
 
   return queryUnderstandingSchema.parse(result);

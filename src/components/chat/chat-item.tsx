@@ -160,6 +160,10 @@ export function ChatItem({ message }: ChatItemProps) {
           <p className="mt-3 text-xs font-mono text-[var(--text-muted)]">General AI answer</p>
         )}
 
+        {!isUser && message.status === 'complete' && message.answerMetadata?.answerSource === 'clarification' && (
+          <p className="mt-3 text-xs font-mono text-[var(--text-muted)]">Need clarification</p>
+        )}
+
         {!isUser && message.status === 'complete' && message.sources && message.sources.length > 0 && (
           <div className="mt-3 rounded-xl border border-[var(--accent-cyan)]/25 bg-[var(--bg-primary)]/40 p-3">
             <p className="text-[11px] font-mono text-[var(--accent-cyan)]">KNOWLEDGE SOURCES</p>

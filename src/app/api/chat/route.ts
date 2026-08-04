@@ -9,11 +9,12 @@ import {
   TOKEN_LIMITS,
 } from '@/lib/ai/constants';
 import { ASSISTANT_MODES, buildSystemPrompt } from '@/lib/ai/prompts';
-import { aggregateAnswerContext, lookupStructuredValue, resolveKnowledgeEntities, retrieveContext } from '@/lib/ai/rag';
+import { aggregateAnswerContext, lookupOnlyPublicProfileLink, lookupStructuredValue, resolveKnowledgeEntities, retrieveContext } from '@/lib/ai/rag';
 import { parseQueryDeterministically } from '@/lib/ai/query-understanding';
 import { EXACT_VALUE_FIELDS, requiresCurrentInformation, routeAnswer, type AnswerStrategy } from '@/lib/ai/router';
 import { createReliableGroqTextStream } from '@/lib/ai/groq/reliable-stream';
 import { getEntityProfile } from '@/lib/ai/knowledge-index';
+import { buildClarification, detectAmbiguity } from '@/lib/ai/clarification';
 
 export const runtime = 'nodejs';
 
@@ -33,7 +34,7 @@ const chatRequestSchema = z.object({
   answerStrategy: z.enum(['normal', 'knowledge_strict', 'knowledge_hybrid']).optional(),
 });
 
-type AnswerMetadata = { answerSource: 'knowledge' | 'general-ai' | 'structured-data'; usedFallback: boolean };
+type AnswerMetadata = { answerSource: 'knowledge' | 'general-ai' | 'structured-data' | 'clarification'; usedFallback: boolean };
 type Source = { documentTitle: string; chunkIndex: number; score: number };
 
 function answerHeaders(metadata: AnswerMetadata, sources: Source[] = []) {
@@ -110,7 +111,14 @@ export async function POST(req: Request) {
         if (lastUserIndex >= 0) {
           const latestQuestion = messages[lastUserIndex].content;
           let understanding = parseQueryDeterministically(latestQuestion);
-          const entityResolution = await resolveKnowledgeEntities(latestQuestion);
+          let entityResolution = await resolveKnowledgeEntities(latestQuestion);
+          const hasContextReference = /\b(?:uska|uski|uske|unki|unka|iska|iski|iske|vo|woh|his|her|their)\b/i.test(latestQuestion);
+          if (!entityResolution.resolved && !entityResolution.ambiguous && hasContextReference) {
+            for (let index = lastUserIndex - 1; index >= 0; index -= 1) {
+              const contextResolution = await resolveKnowledgeEntities(messages[index].content);
+              if (contextResolution.resolved) { entityResolution = contextResolution; break; }
+            }
+          }
           if (process.env.NODE_ENV !== 'production') {
             console.info('[API /api/chat] knowledge entity resolution', {
               detectedEntityPhrase: entityResolution.detectedPhrase,
@@ -118,8 +126,32 @@ export async function POST(req: Request) {
               ambiguityStatus: entityResolution.ambiguous,
             });
           }
-          if (entityResolution.ambiguous) {
-            return new Response(`Kis person ya entity ke baare mein puch rahe hain? Matches: ${entityResolution.matches.map((match) => match.name).join(', ')}.`, { headers: answerHeaders({ answerSource: 'structured-data', usedFallback: false }) });
+          const entityProfile = entityResolution.resolved ? await getEntityProfile(entityResolution.resolved.name) : null;
+          const availableLinkTypes = entityProfile
+            ? [['linkedinUrl', 'LinkedIn'], ['githubUrl', 'GitHub'], ['portfolioUrl', 'Portfolio'], ['websiteUrl', 'Website']]
+              .filter(([field]) => (entityProfile.facts[field] ?? []).length > 0).map(([, label]) => label)
+            : [];
+          const isGenericLinkRequest = /\b(?:link|links|url|profile|account|website|web site)\b/i.test(latestQuestion)
+            && !/\b(?:linkedin|linkdin|lindin|linkdn|github|git hub|gitlab|instagram|facebook|youtube)\b/i.test(latestQuestion);
+          const onlyPublicProfileLink = isGenericLinkRequest && !entityResolution.resolved
+            ? await lookupOnlyPublicProfileLink()
+            : null;
+          if (onlyPublicProfileLink) {
+            const label = onlyPublicProfileLink.field === 'linkedin_url' ? 'LinkedIn profile' : onlyPublicProfileLink.field === 'github_url' ? 'GitHub profile' : onlyPublicProfileLink.field === 'portfolio_url' ? 'portfolio' : 'website';
+            const subject = onlyPublicProfileLink.personName ?? 'Available';
+            if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] selected routing path: single_public_profile_link', { field: onlyPublicProfileLink.field, sourceDocument: onlyPublicProfileLink.source.documentTitle });
+            return new Response(`${subject} ka ${label}:\n${onlyPublicProfileLink.value}`, {
+              headers: answerHeaders(
+                { answerSource: 'structured-data', usedFallback: false },
+                [{ documentTitle: onlyPublicProfileLink.source.documentTitle, chunkIndex: onlyPublicProfileLink.source.chunkIndex, score: 1 }]
+              ),
+            });
+          }
+          const ambiguity = detectAmbiguity({ query: latestQuestion, understanding, resolvedEntityName: entityResolution.resolved?.name ?? null, availableLinkTypes, ambiguousEntityNames: entityResolution.ambiguous ? entityResolution.matches.map((match) => match.name) : undefined });
+          understanding = { ...understanding, ...ambiguity, clarificationQuestion: ambiguity.isAmbiguous ? buildClarification({ query: latestQuestion, understanding, entityName: entityResolution.resolved?.name ?? null, availableLinkTypes, ambiguousEntities: entityResolution.ambiguous ? entityResolution.matches.map((match) => match.name) : undefined }) : null };
+          if (understanding.isAmbiguous) {
+            if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] selected routing path: clarification', { missingInformation: understanding.missingInformation, possibleIntents: understanding.possibleIntents });
+            return new Response(understanding.clarificationQuestion ?? 'Kripya thoda aur specific bataiye.', { headers: answerHeaders({ answerSource: 'clarification', usedFallback: false }) });
           }
           if (entityResolution.resolved) {
             const entityType = entityResolution.resolved.type === 'person' ? 'person' : entityResolution.resolved.type === 'organization' ? 'organization' : 'project';
@@ -131,18 +163,17 @@ export async function POST(req: Request) {
               requestedField: understanding.requestedField === 'unknown' ? 'summary' : understanding.requestedField,
               confidence: Math.max(understanding.confidence, 0.9),
             };
-            const profile = await getEntityProfile(entityResolution.resolved.name);
-            if (profile && understanding.requestedField === 'summary') {
-              const profession = profile.facts.profession?.[0];
-              const technologies = profile.facts.technologies ?? [];
-              const ownerOf = profile.facts.ownerOf?.[0];
-              const sentences = [profession ? `${profile.canonicalName} ek ${profession} hain` : `${profile.canonicalName} ke baare mein uploaded knowledge mein profile information available hai`];
+            if (entityProfile && understanding.requestedField === 'summary') {
+              const profession = entityProfile.facts.profession?.[0];
+              const technologies = entityProfile.facts.technologies ?? [];
+              const ownerOf = entityProfile.facts.ownerOf?.[0];
+              const sentences = [profession ? `${entityProfile.canonicalName} ek ${profession} hain` : `${entityProfile.canonicalName} ke baare mein uploaded knowledge mein profile information available hai`];
               if (technologies.length) sentences[0] += ` jo ${joinNatural(technologies)} par kaam karte hain.`;
               else sentences[0] += '.';
               if (ownerOf) sentences.push(`Ve ${ownerOf} ke owner hain.`);
-              if (profile.conflicts.length) sentences.push(`Uploaded sources mein ${profile.conflicts.map((conflict) => conflict.field).join(', ')} ke baare mein conflicting information hai.`);
+              if (entityProfile.conflicts.length) sentences.push(`Uploaded sources mein ${entityProfile.conflicts.map((conflict) => conflict.field).join(', ')} ke baare mein conflicting information hai.`);
               const profileSources: Source[] = entityResolution.resolved.documentTitles.map((documentTitle) => ({ documentTitle, chunkIndex: 0, score: 1 }));
-              if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] selected routing path: entity_profile', { entity: profile.canonicalName, factFields: Object.keys(profile.facts), conflicts: profile.conflicts.length });
+              if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] selected routing path: entity_profile', { entity: entityProfile.canonicalName, factFields: Object.keys(entityProfile.facts), conflicts: entityProfile.conflicts.length });
               return new Response(sentences.join(' '), { headers: answerHeaders({ answerSource: 'knowledge', usedFallback: false }, profileSources) });
             }
           }
