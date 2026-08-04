@@ -1,0 +1,6 @@
+import { z } from 'zod';
+import { connectToDatabase } from '@/lib/db/connect';
+import Conversation from '@/models/Conversation';
+import Message from '@/models/Message';
+const schema = z.object({ role: z.enum(['user', 'assistant']), content: z.string().trim().min(1).max(8000) });
+export async function POST(request: Request, { params }: { params: Promise<{ id: string }> }) { const parsed = schema.safeParse(await request.json().catch(() => null)); if (!parsed.success) return Response.json({ error: 'Invalid message.' }, { status: 400 }); const { id } = await params; try { await connectToDatabase(); if (!await Conversation.exists({ _id: id })) return Response.json({ error: 'Conversation not found.' }, { status: 404 }); const message = await Message.create({ conversationId: id, ...parsed.data }); await Conversation.findByIdAndUpdate(id, { $set: { updatedAt: new Date() } }); return Response.json({ message: { id: String(message._id), role: message.role, content: message.content, createdAt: message.createdAt.toISOString(), status: 'complete' } }, { status: 201 }); } catch { return Response.json({ error: 'Database unavailable.' }, { status: 503 }); } }

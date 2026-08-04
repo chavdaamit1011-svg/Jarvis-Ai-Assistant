@@ -35,7 +35,7 @@ export function ChatArea() {
     setShowScrollBottom(isUp);
   };
 
-  const hasMessages = activeChat.messages.length > 0;
+  const hasMessages = Boolean(activeChat?.messages.length);
 
   return (
     <div className="flex flex-col flex-1 h-screen overflow-hidden bg-[var(--bg-primary)]">
@@ -50,7 +50,7 @@ export function ChatArea() {
       >
         {hasMessages ? (
           <div className="max-w-4xl mx-auto space-y-4">
-            {activeChat.messages.map((msg) => (
+            {activeChat?.messages.map((msg) => (
               <ChatItem key={msg.id} message={msg} />
             ))}
             <div ref={messagesEndRef} />
