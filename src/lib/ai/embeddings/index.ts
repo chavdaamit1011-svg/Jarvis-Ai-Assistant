@@ -1,4 +1,5 @@
 export { cosineSimilarity } from './cosine-similarity';
+export { embeddingProvider, localHuggingFaceEmbeddingProvider, type EmbeddingProvider } from './provider';
 export { EMBEDDING_DIMENSION, EMBEDDING_MODEL_ID, getEmbeddingModel } from './embedding-model';
 export { generateEmbedding, generateEmbeddings, MAX_EMBEDDING_BATCH_SIZE, MAX_EMBEDDING_TEXT_LENGTH } from './generate-embedding';
 export { semanticSearch } from './semantic-search';

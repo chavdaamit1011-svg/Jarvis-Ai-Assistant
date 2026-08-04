@@ -70,7 +70,7 @@ export function Sidebar() {
           >
             <div className="flex items-center gap-2">
               <Plus size={16} />
-              <span>New Protocol</span>
+              <span>New Chat</span>
             </div>
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-black/20 text-slate-900">
               Ctrl+N
