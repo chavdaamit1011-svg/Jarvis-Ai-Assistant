@@ -69,7 +69,7 @@ function fieldFromQuery(normalized: string): { field: RequestedField; platform: 
   if (/\b(?:phone|mobile|number|contact)\b/.test(normalized)) return { field: 'phone', platform: 'unknown', confidence: 0.92 };
   if (/\b(?:owner|own|owns|founder|creator|built by|banaya|banaya hai)\b/.test(normalized)) return { field: 'owner', platform: 'unknown', confidence: 0.9 };
   if (/\b(?:role|designation|position|job title)\b/.test(normalized)) return { field: 'role', platform: 'unknown', confidence: 0.9 };
-  if (/\b(?:skills?|technologies|tech stack)\b/.test(normalized)) return { field: 'skills', platform: 'unknown', confidence: 0.9 };
+  if (/\b(?:skills?|technology|technologies|tech|tech stack)\b/.test(normalized)) return { field: 'skills', platform: 'unknown', confidence: 0.9 };
   if (/\b(?:education|study|college|university|degree)\b/.test(normalized)) return { field: 'education', platform: 'unknown', confidence: 0.9 };
   if (/\b(?:projects?|project work|application|software)\b/.test(normalized)) return { field: 'projects', platform: 'unknown', confidence: 0.88 };
   if (/\b(?:summary|about|introduce|introduction)\b/.test(normalized)) return { field: 'summary', platform: 'unknown', confidence: 0.82 };

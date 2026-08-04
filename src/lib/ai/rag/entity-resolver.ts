@@ -18,7 +18,7 @@ export type EntityResolution = {
   ambiguous: boolean;
 };
 
-const STOP_WORDS = new Set(['a', 'ai', 'and', 'are', 'ch', 'che', 'he', 'hai', 'hain', 'is', 'ka', 'ke', 'ki', 'kis', 'kiska', 'kya', 'kon', 'kaun', 'ko', 'konse', 'me', 'ni', 'no', 'of', 'owner', 'own', 'owns', 'su', 'shu', 'the', 'to', 'vo', 'what', 'who']);
+const STOP_WORDS = new Set(['a', 'ai', 'and', 'are', 'ch', 'che', 'he', 'hai', 'hain', 'is', 'ka', 'ke', 'ki', 'kis', 'kiska', 'kya', 'kon', 'kaun', 'ko', 'konse', 'me', 'ni', 'no', 'of', 'owner', 'own', 'owns', 'project', 'projects', 'su', 'shu', 'the', 'to', 'vo', 'what', 'who', 'work', 'karta']);
 const normalize = (value: string) => value.toLowerCase().replace(/[^\p{L}\p{N}]/gu, ' ').replace(/\s+/g, ' ').trim();
 const titleCase = (value: string) => value.toLowerCase().replace(/\b[a-z]/g, (letter) => letter.toUpperCase());
 

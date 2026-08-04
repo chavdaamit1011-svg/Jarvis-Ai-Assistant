@@ -44,6 +44,12 @@ function answerHeaders(metadata: AnswerMetadata, sources: Source[] = []) {
   };
 }
 
+function validateGenerationMessages(messages: Array<{ role: 'user' | 'assistant'; content: string }>) {
+  const valid = messages.every((message) => (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string' && message.content.trim().length > 0);
+  if (!valid) throw new Error('Invalid generation message payload.');
+  return { messageCount: messages.length, contentLengths: messages.map((message) => message.content.length) };
+}
+
 function jsonError(error: string, status: number) {
   return Response.json(
     { error },
@@ -195,9 +201,10 @@ export async function POST(req: Request) {
             : null;
           if (aggregated && process.env.NODE_ENV !== 'production') {
             console.info('[API /api/chat] answer aggregation', {
-              answerMode: aggregated.answerMode,
-              valueCount: aggregated.values.length,
-              sourceTitles: aggregated.sourceTitles,
+                answerMode: aggregated.answerMode,
+                valueCount: aggregated.values.length,
+                aggregatedContextLength: aggregated.context.length,
+                sourceTitles: aggregated.sourceTitles,
               conflictCount: aggregated.conflicts.length,
             });
           }
@@ -206,10 +213,15 @@ export async function POST(req: Request) {
           if (aggregated?.answerMode === 'combined_list' && aggregated.values.length) {
             const isHinglish = /\b(?:kya|hain|hai|ke|ki|ka|batao|samjhao)\b/i.test(latestQuestion);
             const subject = understanding.entityName ?? 'The person';
+            const asksTechnology = /\b(?:tech|technology|technologies|tech stack)\b/i.test(latestQuestion);
             const heading = isHinglish
               ? `${subject} ki combined ${understanding.requestedField}:`
               : `${subject}'s combined ${understanding.requestedField} include:`;
-            return new Response(`${heading}\n\n${aggregated.values.map((value) => `- ${value}`).join('\n')}`, {
+            const list = aggregated.values.join(', ').replace(/, ([^,]+)$/, ' aur $1');
+            const deterministicAnswer = asksTechnology
+              ? `${subject} ${list} par kaam karte hain.`
+              : `${heading}\n\n${aggregated.values.map((value) => `- ${value}`).join('\n')}`;
+            return new Response(deterministicAnswer, {
               headers: answerHeaders({ answerSource: 'knowledge', usedFallback: false }, sources),
             });
           }
@@ -236,14 +248,35 @@ export async function POST(req: Request) {
         answerMetadata = { answerSource: 'general-ai', usedFallback: true };
       }
     }
+    const messageValidation = validateGenerationMessages(messages);
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[API /api/chat] Groq generation request', {
+        selectedRoute: answerMetadata.answerSource === 'knowledge' ? 'rag' : 'general_llm',
+        model: DEFAULT_MODEL_ID,
+        validSystemInstructions: Boolean(system.trim()),
+        ...messageValidation,
+      });
+    }
     const stream = createReliableGroqTextStream({
       modelIds: [DEFAULT_MODEL_ID, GROQ_FALLBACK_MODEL_ID],
       signal: req.signal,
-      generate: (modelId) => {
+      generate: (modelId, options) => {
+        const generationSystem = options.simplified
+          ? 'Answer the user with concise, accurate text. If reference context is supplied, use only that context as factual support.'
+          : system;
+        if (process.env.NODE_ENV !== 'production') {
+          console.info('[API /api/chat] Groq generation attempt', {
+            model: modelId,
+            attempt: options.attempt,
+            simplified: options.simplified,
+            messageCount: messages.length,
+            hasTextContext: messages.some((message) => message.content.includes('UNTRUSTED')),
+          });
+        }
         const result = streamText({
           model: groq(modelId),
           messages,
-          system,
+          system: generationSystem,
           temperature: TEMPERATURE_DEFAULTS.default,
           maxOutputTokens: TOKEN_LIMITS.defaultMaxTokens,
           onError: ({ error }) => console.error('[API /api/chat] Stream error:', error),

@@ -17,7 +17,7 @@ type Generation = {
 type ReliableStreamInput = {
   modelIds: string[];
   signal?: AbortSignal;
-  generate: (modelId: string) => Generation;
+  generate: (modelId: string, options: { attempt: number; simplified: boolean }) => Generation;
 };
 
 function errorText(error: unknown) {
@@ -72,7 +72,7 @@ export function createReliableGroqTextStream(input: ReliableStreamInput) {
         let lastError: unknown = new Error('empty response');
 
         try {
-          const result = input.generate(modelId);
+          const result = input.generate(modelId, { attempt: index + 1, simplified: index > 0 });
           for await (const text of result.textStream) {
             if (input.signal?.aborted) break;
             if (!text) continue;
