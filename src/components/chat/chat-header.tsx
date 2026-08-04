@@ -3,15 +3,11 @@
 import React, { useState } from 'react';
 import { useChat } from '@/context/chat-context';
 import { ModelSelector } from './model-selector';
-import Link from 'next/link';
 import {
-  BrainCircuit,
   Download,
-  Menu,
   PanelLeft,
   Settings,
   ShieldAlert,
-  Trash2,
   Zap,
 } from 'lucide-react';
 
@@ -20,7 +16,6 @@ export function ChatHeader() {
     activeChat,
     toggleSidebar,
     setIsSettingsOpen,
-    clearAllChats,
     exportChatHistory,
     persona,
     setPersona,
@@ -56,16 +51,6 @@ export function ChatHeader() {
 
       {/* Right Section: Persona Toggle, Export, Settings */}
       <div className="flex items-center gap-2">
-        {/* AI Playground Button */}
-        <Link
-          href="/playground"
-          className="flex items-center gap-1.5 px-2.5 py-1 rounded-xl text-xs font-mono border bg-[var(--bg-tertiary)] border-[var(--accent-cyan)]/40 text-[var(--accent-cyan)] hover:bg-[var(--accent-cyan)]/15 transition-all shadow-sm"
-          title="AI Educational Playground"
-        >
-          <BrainCircuit size={14} />
-          <span className="hidden sm:inline">Playground</span>
-        </Link>
-
         {/* Persona Mode Switch */}
         <button
           onClick={togglePersona}

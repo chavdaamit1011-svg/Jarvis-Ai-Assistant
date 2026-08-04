@@ -8,6 +8,7 @@ const knowledgeDocumentSchema = new Schema({
   status: { type: String, enum: ['processing', 'ready', 'failed'], default: 'processing', index: true },
   chunkCount: { type: Number, default: 0, min: 0 },
   embeddingModel: { type: String, default: '' },
+  errorMessage: { type: String, trim: true, maxlength: 300 },
   visibility: { type: String, enum: ['private', 'public'], default: 'private', index: true },
 }, { timestamps: true, versionKey: false });
 

@@ -24,7 +24,7 @@ export async function ingestDocument(input: { title: string; content: string; de
     return document;
   } catch (error) {
     await KnowledgeChunk.deleteMany({ documentId: document._id }).catch(() => undefined);
-    document.status = 'failed'; await document.save().catch(() => undefined);
+    document.status = 'failed'; document.errorMessage = 'Processing failed. Please review the content and try again.'; await document.save().catch(() => undefined);
     console.error('[RAG] Knowledge ingestion failed:', error instanceof Error ? error.message : 'unknown error');
     throw new Error('Knowledge document processing failed. Please try again.');
   }
