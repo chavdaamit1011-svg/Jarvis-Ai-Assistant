@@ -1,16 +1,17 @@
 import { queryUnderstandingSchema } from './schema';
 import { normalizeQuery } from './normalize-query';
 import type { QueryUnderstanding } from './types';
+import { classifyLinkRequest } from '@/lib/ai/link-resolution';
 
 type RequestedField = QueryUnderstanding['requestedField'];
 type Platform = QueryUnderstanding['platform'];
 
 const STOP_WORDS = new Set([
-  'a', 'an', 'and', 'answer', 'app', 'batao', 'by', 'ch', 'che', 'contact',
-  'do', 'education', 'email', 'explain', 'for', 'founder', 'git', 'github', 'give', 'hai', 'hain', 'he', 'hub', 'in', 'is', 'ka',
+  'a', 'an', 'and', 'answer', 'app', 'batao', 'bhej', 'bhejo', 'by', 'ch', 'che', 'contact',
+  'do', 'education', 'email', 'explain', 'facebook', 'for', 'founder', 'git', 'github', 'gitlab', 'give', 'hai', 'hain', 'he', 'hub', 'in', 'instagram', 'is', 'ka',
   'ke', 'ki', 'kis', 'kya', 'link', 'linkdin', 'linkedin', 'lindin', 'linkdn',
   'ni', 'no', 'of', 'on', 'owner', 'phone', 'portfolio', 'profile', 'project', 'projects', 'role',
-  'show', 'skill', 'skills', 'summary', 'su', 'shu', 'the', 'to', 'url', 'what',
+  'show', 'send', 'skill', 'skills', 'summary', 'su', 'shu', 'the', 'to', 'twitter', 'url', 'what', 'youtube',
   'who', 'with', 'website', 'web', 'your', 'karo',
 ]);
 
@@ -84,17 +85,20 @@ function fieldFromQuery(normalized: string): { field: RequestedField; platform: 
 export function parseQueryDeterministically(query: string): QueryUnderstanding {
   const normalizedQuery = normalizeQuery(query);
   const detected = fieldFromQuery(normalizedQuery);
+  const detectedEntityName = detectEntityName(normalizedQuery);
+  const linkRequest = classifyLinkRequest(query, detectedEntityName);
   const isExact = ['linkedin_url', 'github_url', 'portfolio_url', 'website_url', 'email', 'phone', 'owner', 'role'].includes(detected.field);
   const isDescriptive = ['skills', 'education', 'projects', 'summary'].includes(detected.field);
   const result: QueryUnderstanding = {
     intent: isExact ? 'exact_value_lookup' : isDescriptive ? 'descriptive_question' : 'general_question',
-    entityType: detectEntityName(normalizedQuery) ? 'person' : 'unknown',
-    entityName: detectEntityName(normalizedQuery),
+    entityType: detectedEntityName ? 'person' : 'unknown',
+    entityName: detectedEntityName,
     requestedField: detected.field,
     platform: detected.platform,
     language: 'und',
     confidence: detected.confidence,
     normalizedQuery,
+    linkRequestType: linkRequest?.linkRequestType ?? null,
     isAmbiguous: false,
     missingInformation: [],
     possibleIntents: [],

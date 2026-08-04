@@ -9,8 +9,9 @@ import {
   TOKEN_LIMITS,
 } from '@/lib/ai/constants';
 import { ASSISTANT_MODES, buildSystemPrompt } from '@/lib/ai/prompts';
-import { aggregateAnswerContext, lookupOnlyPublicProfileLink, lookupStructuredValue, resolveKnowledgeEntities, retrieveContext } from '@/lib/ai/rag';
+import { aggregateAnswerContext, lookupEntityPlatformLink, lookupStructuredValue, resolveKnowledgeEntities, retrieveContext } from '@/lib/ai/rag';
 import { parseQueryDeterministically } from '@/lib/ai/query-understanding';
+import { classifyLinkRequest, findExplicitLinkEntityName, getOfficialPlatformUrl } from '@/lib/ai/link-resolution';
 import { EXACT_VALUE_FIELDS, requiresCurrentInformation, routeAnswer, type AnswerStrategy } from '@/lib/ai/router';
 import { createReliableGroqTextStream } from '@/lib/ai/groq/reliable-stream';
 import { getEntityProfile } from '@/lib/ai/knowledge-index';
@@ -131,21 +132,55 @@ export async function POST(req: Request) {
             ? [['linkedinUrl', 'LinkedIn'], ['githubUrl', 'GitHub'], ['portfolioUrl', 'Portfolio'], ['websiteUrl', 'Website']]
               .filter(([field]) => (entityProfile.facts[field] ?? []).length > 0).map(([, label]) => label)
             : [];
-          const isGenericLinkRequest = /\b(?:link|links|url|profile|account|website|web site)\b/i.test(latestQuestion)
-            && !/\b(?:linkedin|linkdin|lindin|linkdn|github|git hub|gitlab|instagram|facebook|youtube)\b/i.test(latestQuestion);
-          const onlyPublicProfileLink = isGenericLinkRequest && !entityResolution.resolved
-            ? await lookupOnlyPublicProfileLink()
-            : null;
-          if (onlyPublicProfileLink) {
-            const label = onlyPublicProfileLink.field === 'linkedin_url' ? 'LinkedIn profile' : onlyPublicProfileLink.field === 'github_url' ? 'GitHub profile' : onlyPublicProfileLink.field === 'portfolio_url' ? 'portfolio' : 'website';
-            const subject = onlyPublicProfileLink.personName ?? 'Available';
-            if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] selected routing path: single_public_profile_link', { field: onlyPublicProfileLink.field, sourceDocument: onlyPublicProfileLink.source.documentTitle });
-            return new Response(`${subject} ka ${label}:\n${onlyPublicProfileLink.value}`, {
-              headers: answerHeaders(
-                { answerSource: 'structured-data', usedFallback: false },
-                [{ documentTitle: onlyPublicProfileLink.source.documentTitle, chunkIndex: onlyPublicProfileLink.source.chunkIndex, score: 1 }]
-              ),
-            });
+          const explicitLinkEntityName = findExplicitLinkEntityName(latestQuestion);
+          const hasExplicitLinkEntity = Boolean(explicitLinkEntityName ?? understanding.entityName);
+          const linkEntityName = hasContextReference
+            ? entityResolution.resolved?.name ?? null
+            : hasExplicitLinkEntity
+              ? entityResolution.resolved?.type === 'person'
+                ? entityResolution.resolved.name
+                : explicitLinkEntityName ?? understanding.entityName
+              : null;
+          const linkRequest = classifyLinkRequest(latestQuestion, linkEntityName);
+          if (linkRequest) {
+            understanding = { ...understanding, linkRequestType: linkRequest.linkRequestType, platform: linkRequest.platform, entityName: linkRequest.entityName };
+            if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] link request classification', linkRequest);
+            if (linkRequest.linkRequestType === 'ambiguous') {
+              const question = linkRequest.entityName
+                ? `${linkRequest.entityName} ki kaunsi platform link chahiye—LinkedIn, GitHub, GitLab, Instagram, Facebook, X, YouTube ya koi aur?`
+                : 'Kaunsi platform ki link chahiye—LinkedIn, GitHub, GitLab, Instagram, Facebook, X, YouTube ya koi aur?';
+              return new Response(question, {
+                headers: answerHeaders({ answerSource: 'clarification', usedFallback: false }),
+              });
+            }
+            if (linkRequest.linkRequestType === 'platform_homepage') {
+              const officialUrl = getOfficialPlatformUrl(linkRequest.platform);
+              if (officialUrl) {
+                return new Response(officialUrl, { headers: answerHeaders({ answerSource: 'structured-data', usedFallback: false }) });
+              }
+            }
+            if (linkRequest.linkRequestType === 'entity_profile' && linkRequest.entityName) {
+              const exactPlatformLink = await lookupEntityPlatformLink({ entityName: linkRequest.entityName, platform: linkRequest.platform });
+              const platformName = ({ linkedin: 'LinkedIn', github: 'GitHub', gitlab: 'GitLab', instagram: 'Instagram', facebook: 'Facebook', x: 'X', youtube: 'YouTube', website: 'website', unknown: 'requested' } as const)[linkRequest.platform];
+              const label = linkRequest.platform === 'website' ? 'website' : `${platformName} profile`;
+              if ('value' in exactPlatformLink) {
+                const source = exactPlatformLink.source;
+                return new Response(`${exactPlatformLink.entityName} ka ${label}:\n${exactPlatformLink.value}`, {
+                  headers: answerHeaders(
+                    { answerSource: 'structured-data', usedFallback: false },
+                    source ? [{ documentTitle: source.documentTitle, chunkIndex: source.chunkIndex, score: 1 }] : [],
+                  ),
+                });
+              }
+              if ('ambiguous' in exactPlatformLink) {
+                return new Response(`${linkRequest.entityName} ke ek se zyada ${label} links available hain. Kripya specific link batayein.`, {
+                  headers: answerHeaders({ answerSource: 'clarification', usedFallback: false }),
+                });
+              }
+              return new Response(`Uploaded knowledge me ${linkRequest.entityName} ka ${label} available nahi hai.`, {
+                headers: answerHeaders({ answerSource: 'structured-data', usedFallback: false }),
+              });
+            }
           }
           const ambiguity = detectAmbiguity({ query: latestQuestion, understanding, resolvedEntityName: entityResolution.resolved?.name ?? null, availableLinkTypes, ambiguousEntityNames: entityResolution.ambiguous ? entityResolution.matches.map((match) => match.name) : undefined });
           understanding = { ...understanding, ...ambiguity, clarificationQuestion: ambiguity.isAmbiguous ? buildClarification({ query: latestQuestion, understanding, entityName: entityResolution.resolved?.name ?? null, availableLinkTypes, ambiguousEntities: entityResolution.ambiguous ? entityResolution.matches.map((match) => match.name) : undefined }) : null };
