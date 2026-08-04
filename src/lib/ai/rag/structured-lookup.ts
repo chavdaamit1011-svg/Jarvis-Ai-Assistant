@@ -3,6 +3,7 @@ import KnowledgeChunk from '@/models/KnowledgeChunk';
 import KnowledgeDocument from '@/models/KnowledgeDocument';
 import { connectToDatabase } from '@/lib/db/connect';
 import type { QueryUnderstanding } from '@/lib/ai/query-understanding';
+import { extractEntities } from './entity-extraction';
 
 type StoredEntities = {
   personNames?: string[];
@@ -49,7 +50,7 @@ export async function lookupStructuredValue(understanding: QueryUnderstanding) {
 
   await connectToDatabase();
   const documents = await KnowledgeDocument.find({ status: 'ready', visibility: 'public' })
-    .select('title entities')
+    .select('title entities originalContent')
     .lean();
   const chunks = await KnowledgeChunk.find({
     documentId: { $in: documents.map((document) => document._id) },
@@ -63,7 +64,11 @@ export async function lookupStructuredValue(understanding: QueryUnderstanding) {
   }
 
   const candidates = documents.flatMap((document) => {
-    const entities = (document.entities ?? {}) as StoredEntities;
+    const storedEntities = (document.entities ?? {}) as StoredEntities;
+    // Documents uploaded before entity metadata was added remain searchable.
+    const entities = Object.keys(storedEntities).length
+      ? storedEntities
+      : extractEntities(document.originalContent ?? '');
     const documentChunks = chunksByDocument.get(String(document._id)) ?? [];
     const combinedContent = documentChunks.map((chunk) => chunk.content).join('\n');
     if (understanding.entityName && !matchesPerson(entities, combinedContent, understanding.entityName)) return [];

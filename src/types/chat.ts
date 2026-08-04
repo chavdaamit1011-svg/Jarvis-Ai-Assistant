@@ -19,6 +19,13 @@ export interface KnowledgeSource {
   score: number;
 }
 
+export type AnswerSource = 'knowledge' | 'general-ai' | 'structured-data';
+
+export interface AnswerMetadata {
+  answerSource: AnswerSource;
+  usedFallback: boolean;
+}
+
 /** Local, text-only representation compatible with this app's AI SDK text stream. */
 export interface Message {
   id: string;
@@ -31,6 +38,7 @@ export interface Message {
   isEdited?: boolean;
   likeStatus?: 'liked' | 'disliked' | null;
   sources?: KnowledgeSource[];
+  answerMetadata?: AnswerMetadata;
 }
 
 export interface Conversation {

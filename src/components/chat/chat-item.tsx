@@ -156,7 +156,11 @@ export function ChatItem({ message }: ChatItemProps) {
           </div>
         )}
 
-        {!isUser && message.status === 'complete' && message.sources && (
+        {!isUser && message.status === 'complete' && message.answerMetadata?.answerSource === 'general-ai' && (
+          <p className="mt-3 text-xs font-mono text-[var(--text-muted)]">General AI answer</p>
+        )}
+
+        {!isUser && message.status === 'complete' && message.sources && message.sources.length > 0 && (
           <div className="mt-3 rounded-xl border border-[var(--accent-cyan)]/25 bg-[var(--bg-primary)]/40 p-3">
             <p className="text-[11px] font-mono text-[var(--accent-cyan)]">KNOWLEDGE SOURCES</p>
             {message.sources.length ? <div className="mt-2 space-y-1">{message.sources.map((source, index) => <div key={`${source.documentTitle}-${source.chunkIndex}-${index}`} className="flex flex-wrap justify-between gap-2 text-xs text-[var(--text-secondary)]"><span>{source.documentTitle} · chunk {source.chunkIndex + 1}</span><span>{Math.round(source.score * 100)}% match</span></div>)}</div> : <p className="mt-2 text-xs text-[var(--text-muted)]">No relevant source was found in the selected knowledge base.</p>}

@@ -37,14 +37,16 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
   const stream = async (conversation: Conversation, assistantId: string, history: Message[]) => {
     const controller = new AbortController(); abortRef.current = controller; setIsStreaming(true); let content = '';
     try {
-      const chatPayload = { messages: history.slice(-MAX_HISTORY).map(({ role, content: messageContent }) => ({ role, content: messageContent })), mode: conversation.assistantMode, knowledgeMode };
+      const chatMode = knowledgeMode === 'off' ? 'normal' : 'knowledge_hybrid';
+      const chatPayload = { messages: history.slice(-MAX_HISTORY).map(({ role, content: messageContent }) => ({ role, content: messageContent })), mode: conversation.assistantMode, knowledgeMode, chatMode };
       if (process.env.NODE_ENV !== 'production') console.info('[Chat] selected knowledgeMode:', knowledgeMode);
       const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(chatPayload), signal: controller.signal });
       if (!response.ok) throw new Error(((await response.json().catch(() => null)) as { error?: string } | null)?.error || 'AI request failed.');
-      let sources: Message['sources'] = []; try { const raw = response.headers.get('X-Jarvis-Knowledge-Sources'); sources = raw ? JSON.parse(decodeURIComponent(raw)) : []; } catch { sources = []; }
+      let sources: Message['sources'] = []; let answerMetadata: Message['answerMetadata']; try { const raw = response.headers.get('X-Jarvis-Knowledge-Sources'); sources = raw ? JSON.parse(decodeURIComponent(raw)) : []; const metadata = response.headers.get('X-Jarvis-Answer-Metadata'); answerMetadata = metadata ? JSON.parse(decodeURIComponent(metadata)) : undefined; } catch { sources = []; answerMetadata = undefined; }
       if (!response.body) throw new Error('No stream body received.'); const reader = response.body.getReader(); const decoder = new TextDecoder();
       while (true) { const { done, value } = await reader.read(); if (done) break; content += decoder.decode(value, { stream: true }); const next = content; setChats((current) => current.map((chat) => chat.id === conversation.id ? { ...chat, updatedAt: new Date().toISOString(), messages: chat.messages.map((message) => message.id === assistantId ? { ...message, content: next, status: 'streaming' } : message) } : chat)); }
-      await persistMessage(conversation.id, 'assistant', content); setChats((current) => current.map((chat) => chat.id === conversation.id ? { ...chat, messages: chat.messages.map((message) => message.id === assistantId ? { ...message, status: 'complete', sources } : message) } : chat));
+      if (!content.trim()) throw new Error('The AI service returned an empty response. Please try again.');
+      await persistMessage(conversation.id, 'assistant', content); setChats((current) => current.map((chat) => chat.id === conversation.id ? { ...chat, messages: chat.messages.map((message) => message.id === assistantId ? { ...message, status: 'complete', sources, answerMetadata } : message) } : chat));
     } catch (error) { if (error instanceof DOMException && error.name === 'AbortError') return; const message = error instanceof Error ? error.message : 'AI request failed.'; setChats((current) => current.map((chat) => chat.id === conversation.id ? { ...chat, messages: chat.messages.map((item) => item.id === assistantId ? { ...item, content: `⚠️ **AI Service Notice**: ${message}`, status: 'error', error: { message, retryable: true } } : item) } : chat)); }
     finally { if (abortRef.current === controller) { abortRef.current = null; setIsStreaming(false); } }
   };
