@@ -29,8 +29,8 @@ export function routeAnswer(input: AnswerRoutingInput): AnswerRoutingDecision {
   if (input.ragFound) {
     const isDescriptive = DOCUMENT_DESCRIPTIVE_FIELDS.has(input.understanding.requestedField);
     const strongGeneralEvidence = (input.ragConfidence ?? 0) >= GENERAL_QUESTION_RAG_CONFIDENCE;
-    if (isDescriptive || strongGeneralEvidence) {
-      return { route: 'rag', reason: isDescriptive ? 'The question requests document-supported descriptive information.' : 'Relevant document evidence is strong enough for a general question.', confidence: Math.max(confidence, input.ragConfidence ?? 0), knowledgeFound: true, currentInformationRequired };
+    if (isDescriptive || strongGeneralEvidence || input.knownEntityFound) {
+      return { route: 'rag', reason: input.knownEntityFound ? 'A unique entity from uploaded knowledge was resolved.' : isDescriptive ? 'The question requests document-supported descriptive information.' : 'Relevant document evidence is strong enough for a general question.', confidence: Math.max(confidence, input.ragConfidence ?? 0), knowledgeFound: true, currentInformationRequired };
     }
   }
 

@@ -8,7 +8,9 @@ export const DOCUMENT_DESCRIPTIVE_FIELDS = new Set<QueryUnderstanding['requested
   'skills', 'education', 'projects', 'summary',
 ]);
 
-const CURRENT_INFORMATION_PATTERN = /\b(?:current|latest|today|now|news|minister|prime minister|president|election|price|weather|score)\b/i;
+// English plus common Hindi/Hinglish/Gujarati-Roman ways of asking for a
+// changing, time-sensitive fact. These are retrieval-routing hints, not facts.
+const CURRENT_INFORMATION_PATTERN = /\b(?:current|currently|latest|recent|today|now|present|live|news|minister|prime minister|president|ceo|election|price|weather|score|law|policy|abhi|aaj|vartman|vartamaan|haal|hal|nava|navi|naye)\b/i;
 
 export function requiresCurrentInformation(query: string) {
   return CURRENT_INFORMATION_PATTERN.test(query);

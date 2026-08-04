@@ -9,4 +9,6 @@ export { extractExactValues } from './exact-values';
 export { parseQueryIntent } from './query-intent';
 export type { ProfileIntent, QueryIntent } from './query-intent';
 export { lookupStructuredValue } from './structured-lookup';
+export { resolveKnowledgeEntities } from './entity-resolver';
+export type { EntityResolution, KnowledgeEntityMatch } from './entity-resolver';
 export type { KnowledgeVisibility, RetrievedChunk, RetrievedContext, TextChunk } from './rag-types';

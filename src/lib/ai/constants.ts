@@ -11,6 +11,8 @@ export const DEFAULT_PROVIDER = 'groq';
 // Keep the server-selected Groq model in one place. The client never chooses a
 // provider model, which prevents arbitrary model IDs from reaching the API.
 export const DEFAULT_MODEL_ID = 'llama-3.3-70b-versatile';
+// Used only after the primary model returns no text or has a temporary failure.
+export const GROQ_FALLBACK_MODEL_ID = 'llama-3.1-8b-instant';
 
 export const SUPPORTED_MODELS: AIModel[] = [
   {

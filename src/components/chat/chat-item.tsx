@@ -189,6 +189,15 @@ export function ChatItem({ message }: ChatItemProps) {
               </button>
             ) : (
               <>
+                {message.status === 'error' && (
+                  <button
+                    onClick={() => regenerateMessage(message.id)}
+                    disabled={isStreaming}
+                    className="rounded-md border border-[var(--accent-cyan)]/40 px-2 py-1 text-xs text-[var(--accent-cyan)] hover:bg-[var(--accent-cyan)]/10 disabled:opacity-40"
+                  >
+                    Retry
+                  </button>
+                )}
                 <button
                   onClick={() => regenerateMessage(message.id)}
                   disabled={isStreaming}
