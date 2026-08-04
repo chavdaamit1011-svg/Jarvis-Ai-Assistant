@@ -35,7 +35,7 @@ const chatRequestSchema = z.object({
   answerStrategy: z.enum(['normal', 'knowledge_strict', 'knowledge_hybrid']).optional(),
 });
 
-type AnswerMetadata = { answerSource: 'knowledge' | 'general-ai' | 'structured-data' | 'clarification'; usedFallback: boolean };
+type AnswerMetadata = { answerSource: 'knowledge' | 'general-ai' | 'structured-data' | 'clarification' | 'web-search-required'; usedFallback: boolean };
 type Source = { documentTitle: string; chunkIndex: number; score: number };
 
 function answerHeaders(metadata: AnswerMetadata, sources: Source[] = []) {
@@ -66,11 +66,6 @@ function jsonError(error: string, status: number) {
 
 export async function POST(req: Request) {
   const apiKey = process.env.GROQ_API_KEY;
-  if (!apiKey?.trim()) {
-    console.error('[API /api/chat] GROQ_API_KEY is not configured.');
-    return jsonError('The AI service is not configured. Please try again later.', 503);
-  }
-
   let payload: unknown;
   try {
     payload = await req.json();
@@ -90,6 +85,21 @@ export async function POST(req: Request) {
     console.info('[API /api/chat] knowledgeMode:', parsed.data.knowledgeMode);
   }
 
+  const latestUserQuestion = [...parsed.data.messages].reverse().find((message) => message.role === 'user')?.content;
+  if (latestUserQuestion && requiresCurrentInformation(latestUserQuestion)) {
+    if (process.env.NODE_ENV !== 'production') {
+      console.info('[API /api/chat] selected routing path: web_search_required', { timeSensitive: true });
+    }
+    return new Response('Is question ka accurate answer dene ke liye live web search required hai. Web Search abhi enabled nahi hai.', {
+      headers: answerHeaders({ answerSource: 'web-search-required', usedFallback: false }),
+    });
+  }
+
+  if (!apiKey?.trim()) {
+    console.error('[API /api/chat] GROQ_API_KEY is not configured.');
+    return jsonError('The AI service is not configured. Please try again later.', 503);
+  }
+
   try {
     const groq = createGroq({ apiKey });
     let system = buildSystemPrompt({
@@ -101,11 +111,6 @@ export async function POST(req: Request) {
     let answerMetadata: AnswerMetadata = { answerSource: 'general-ai', usedFallback: false };
     let messages = parsed.data.messages;
     const answerStrategy: AnswerStrategy = parsed.data.chatMode ?? parsed.data.answerStrategy ?? (parsed.data.knowledgeMode === 'off' ? 'normal' : 'knowledge_hybrid');
-    const latestUserQuestion = [...messages].reverse().find((message) => message.role === 'user')?.content;
-    if (answerStrategy === 'normal' && latestUserQuestion && requiresCurrentInformation(latestUserQuestion)) {
-      system += '\n\nCURRENT INFORMATION NOTICE:\n- This question may depend on current or changing information. You do not have live web access or live verification in this chat.\n- You may provide general context, but clearly say that the answer is not guaranteed current and recommend checking an official or current source.';
-      if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] currentInformationRequired: true');
-    }
     if (answerStrategy !== 'normal') {
       try {
         const lastUserIndex = [...messages].map((message) => message.role).lastIndexOf('user');
@@ -268,6 +273,11 @@ export async function POST(req: Request) {
           sources = retrieved.chunks.map((chunk) => ({ documentTitle: chunk.documentTitle, chunkIndex: chunk.chunkIndex, score: chunk.score }));
           if (decision.route === 'unavailable') {
             return new Response('Knowledge Base me is question ke liye sufficient information available nahi hai.', { headers: answerHeaders({ answerSource: 'knowledge', usedFallback: false }) });
+          }
+          if (decision.route === 'web_search_required') {
+            return new Response('Is question ka accurate answer dene ke liye live web search required hai. Web Search abhi enabled nahi hai.', {
+              headers: answerHeaders({ answerSource: 'web-search-required', usedFallback: false }),
+            });
           }
           if (decision.route === 'general_llm') {
             sources = [];

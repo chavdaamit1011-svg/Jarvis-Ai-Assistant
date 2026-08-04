@@ -19,7 +19,7 @@ export interface KnowledgeSource {
   score: number;
 }
 
-export type AnswerSource = 'knowledge' | 'general-ai' | 'structured-data' | 'clarification';
+export type AnswerSource = 'knowledge' | 'general-ai' | 'structured-data' | 'clarification' | 'web-search-required';
 
 export interface AnswerMetadata {
   answerSource: AnswerSource;

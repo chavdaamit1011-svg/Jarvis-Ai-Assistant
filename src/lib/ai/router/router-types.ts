@@ -1,13 +1,14 @@
 import type { QueryUnderstanding } from '@/lib/ai/query-understanding';
 
 export type AnswerStrategy = 'normal' | 'knowledge_strict' | 'knowledge_hybrid';
-export type AnswerRoute = 'structured_lookup' | 'rag' | 'general_llm' | 'clarification' | 'unavailable';
+export type AnswerRoute = 'structured_lookup' | 'rag' | 'general_llm' | 'web_search_required' | 'clarification' | 'unavailable';
 
 export interface AnswerRoutingDecision {
   route: AnswerRoute;
   reason: string;
   confidence: number;
   knowledgeFound: boolean;
+  timeSensitive: boolean;
   currentInformationRequired: boolean;
 }
 
