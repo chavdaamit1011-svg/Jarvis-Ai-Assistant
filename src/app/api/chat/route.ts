@@ -256,6 +256,8 @@ export async function POST(req: Request) {
             structuredStatus,
             ragFound: retrieved.chunks.length > 0,
             ragConfidence: retrieved.topScores[0],
+            ragUsefulChunkCount: retrieved.chunks.length,
+            ragContextLength: retrieved.context.length,
             knownEntityFound: Boolean(entityResolution.resolved),
           });
           if (process.env.NODE_ENV !== 'production') {
@@ -266,6 +268,7 @@ export async function POST(req: Request) {
               topSimilarityScores: retrieved.topScores,
               selectedDocumentTitles: retrieved.chunks.map((chunk) => chunk.documentTitle),
               contextLength: retrieved.context.length,
+              meetsMinimumContextLength: retrieved.context.length >= 80,
               contextSentToGroq: Boolean(retrieved.context),
             });
             console.info('[API /api/chat] answer router', decision);

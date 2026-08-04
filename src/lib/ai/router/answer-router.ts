@@ -3,6 +3,7 @@ import {
   DOCUMENT_DESCRIPTIVE_FIELDS,
   EXACT_VALUE_FIELDS,
   GENERAL_QUESTION_RAG_CONFIDENCE,
+  HYBRID_RAG_RELEVANCE,
   requiresCurrentInformation,
 } from './routing-policy';
 
@@ -24,10 +25,15 @@ export function routeAnswer(input: AnswerRoutingInput): AnswerRoutingDecision {
     if (input.strategy === 'knowledge_strict') return { route: 'unavailable', reason: 'The requested exact value is not stored in the Knowledge Base.', confidence, knowledgeFound: false, timeSensitive, currentInformationRequired };
   }
 
-  if (input.ragFound) {
+  const hasUsefulRagContext = Boolean(input.ragFound)
+    && (input.ragUsefulChunkCount ?? 0) >= HYBRID_RAG_RELEVANCE.minUsefulChunks
+    && (input.ragContextLength ?? 0) >= HYBRID_RAG_RELEVANCE.minContextCharacters;
+
+  if (hasUsefulRagContext) {
     const isDescriptive = DOCUMENT_DESCRIPTIVE_FIELDS.has(input.understanding.requestedField);
     const strongGeneralEvidence = (input.ragConfidence ?? 0) >= GENERAL_QUESTION_RAG_CONFIDENCE;
-    if (isDescriptive || strongGeneralEvidence || input.knownEntityFound) {
+    const entitySupportedEvidence = Boolean(input.knownEntityFound && (input.ragConfidence ?? 0) >= HYBRID_RAG_RELEVANCE.minEntitySimilarity);
+    if ((isDescriptive && (strongGeneralEvidence || entitySupportedEvidence)) || strongGeneralEvidence || entitySupportedEvidence) {
       return { route: 'rag', reason: input.knownEntityFound ? 'A unique entity from uploaded knowledge was resolved.' : isDescriptive ? 'The question requests document-supported descriptive information.' : 'Relevant document evidence is strong enough for a general question.', confidence: Math.max(confidence, input.ragConfidence ?? 0), knowledgeFound: true, timeSensitive, currentInformationRequired };
     }
   }

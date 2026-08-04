@@ -19,5 +19,7 @@ export interface AnswerRoutingInput {
   structuredStatus?: 'found' | 'ambiguous' | 'missing' | 'skipped';
   ragFound?: boolean;
   ragConfidence?: number;
+  ragUsefulChunkCount?: number;
+  ragContextLength?: number;
   knownEntityFound?: boolean;
 }

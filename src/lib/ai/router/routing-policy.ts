@@ -18,3 +18,11 @@ export function requiresCurrentInformation(query: string) {
 
 /** Broad questions need strong evidence before a personal document overrides Groq. */
 export const GENERAL_QUESTION_RAG_CONFIDENCE = 0.45;
+
+/** Minimum evidence required before hybrid mode lets document context override Groq. */
+export const HYBRID_RAG_RELEVANCE = {
+  minSimilarity: GENERAL_QUESTION_RAG_CONFIDENCE,
+  minEntitySimilarity: 0.28,
+  minUsefulChunks: 1,
+  minContextCharacters: 80,
+} as const;
