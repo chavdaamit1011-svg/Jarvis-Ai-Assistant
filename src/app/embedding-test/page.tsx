@@ -2,6 +2,7 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
+import { permanentRedirect } from 'next/navigation';
 import { ArrowLeft, BrainCircuit, Play, Search, Sparkles } from 'lucide-react';
 
 interface DocumentInput { id: string; title: string; content: string; }
@@ -15,7 +16,7 @@ const INITIAL_DOCUMENTS: DocumentInput[] = [
   { id: 'travel', title: 'Travel Planning', content: 'Plan a trip by researching destinations, setting a budget, booking transport and accommodation, and preparing an itinerary.' },
 ];
 
-export default function EmbeddingTestPage() {
+export function EmbeddingPractical() {
   const [query, setQuery] = useState('How do I promote my business online?');
   const [documents, setDocuments] = useState(INITIAL_DOCUMENTS);
   const [results, setResults] = useState<SearchResult[]>([]);
@@ -61,3 +62,5 @@ export default function EmbeddingTestPage() {
     </div>
   </main>;
 }
+
+export default function EmbeddingTestRedirect() { permanentRedirect('/learn/embeddings'); }

@@ -1,12 +1,11 @@
 export type LearningStatus = 'not-started' | 'in-progress' | 'completed';
 
 export type LessonTab =
-  | 'overview'
+  | 'learn'
   | 'how-it-works'
-  | 'playground'
-  | 'examples'
+  | 'live-practical'
   | 'jarvis-usage'
-  | 'implementation'
+  | 'code-flow'
   | 'interview'
   | 'quiz';
 

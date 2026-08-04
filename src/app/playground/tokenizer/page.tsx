@@ -2,20 +2,17 @@
 
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
+import { permanentRedirect } from 'next/navigation';
 import {
   ArrowLeft,
-  ArrowRight,
   BookOpen,
-  BrainCircuit,
   Check,
   Copy,
   Cpu,
   Database,
   Hash,
-  HelpCircle,
   Layers,
   Sparkles,
-  Zap,
   Terminal,
   RotateCcw,
 } from 'lucide-react';
@@ -47,7 +44,7 @@ const COLOR_PALETTE = [
   'bg-teal-500/20 text-teal-300 border-teal-500/50 hover:bg-teal-500/30',
 ];
 
-export default function TokenizerVisualizerPage() {
+export function TokenizerPractical() {
   const [inputText, setInputText] = useState(PRESET_EXAMPLES[0]);
   const [contextLimit, setContextLimit] = useState(128000); // 128K context window
   const [copiedTokens, setCopiedTokens] = useState(false);
@@ -414,3 +411,5 @@ export default function TokenizerVisualizerPage() {
     </div>
   );
 }
+
+export default function TokenizerRedirect() { permanentRedirect('/learn/tokenization'); }
