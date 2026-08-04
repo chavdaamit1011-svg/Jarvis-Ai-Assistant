@@ -6,7 +6,7 @@ import { ChatSearch } from './chat-search';
 import { ChatList } from './chat-list';
 import { UserProfile } from './user-profile';
 import Link from 'next/link';
-import { Plus, Zap, X, ShieldAlert, GraduationCap, Database } from 'lucide-react';
+import { Plus, Zap, X, ShieldAlert, Database } from 'lucide-react';
 
 export function Sidebar() {
   const {
@@ -76,17 +76,6 @@ export function Sidebar() {
               Ctrl+N
             </span>
           </button>
-
-          <Link
-            href="/learn"
-            className="w-full flex items-center justify-between px-4 py-2 rounded-xl bg-[var(--bg-tertiary)]/70 hover:bg-[var(--bg-tertiary)] border border-[var(--border-color)]/60 text-[var(--text-primary)] font-mono text-xs transition-all duration-200"
-          >
-            <div className="flex items-center gap-2 text-[var(--accent-cyan)] font-semibold">
-              <GraduationCap size={15} />
-              <span>Learn</span>
-            </div>
-            <span className="text-[9px] px-1.5 py-0.5 rounded bg-[var(--accent-cyan)]/20 text-[var(--accent-cyan)]">AI</span>
-          </Link>
 
           <Link href="/knowledge" className="w-full flex items-center justify-between px-4 py-2 rounded-xl bg-[var(--bg-tertiary)]/70 hover:bg-[var(--bg-tertiary)] border border-[var(--border-color)]/60 text-[var(--text-primary)] font-mono text-xs transition-all duration-200">
             <div className="flex items-center gap-2 text-[var(--accent-cyan)] font-semibold"><Database size={15} /><span>Knowledge Base</span></div>

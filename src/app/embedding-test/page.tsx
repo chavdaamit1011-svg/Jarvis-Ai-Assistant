@@ -2,7 +2,6 @@
 
 import { useState } from 'react';
 import Link from 'next/link';
-import { permanentRedirect } from 'next/navigation';
 import { ArrowLeft, BrainCircuit, Play, Search, Sparkles } from 'lucide-react';
 
 interface DocumentInput { id: string; title: string; content: string; }
@@ -63,4 +62,4 @@ export function EmbeddingPractical() {
   </main>;
 }
 
-export default function EmbeddingTestRedirect() { permanentRedirect('/learn/embeddings'); }
+export default function EmbeddingTestPage() { return <EmbeddingPractical />; }

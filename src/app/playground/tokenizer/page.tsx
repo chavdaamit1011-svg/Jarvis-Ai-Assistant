@@ -2,7 +2,6 @@
 
 import React, { useState, useMemo } from 'react';
 import Link from 'next/link';
-import { permanentRedirect } from 'next/navigation';
 import {
   ArrowLeft,
   BookOpen,
@@ -412,4 +411,4 @@ export function TokenizerPractical() {
   );
 }
 
-export default function TokenizerRedirect() { permanentRedirect('/learn/tokenization'); }
+export default function TokenizerVisualizerPage() { return <TokenizerPractical />; }

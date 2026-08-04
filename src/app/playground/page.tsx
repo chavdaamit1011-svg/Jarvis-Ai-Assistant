@@ -1,3 +1,3 @@
-import { permanentRedirect } from 'next/navigation';
+import { redirect } from 'next/navigation';
 
-export default function PlaygroundRedirect() { permanentRedirect('/learn/tokenization'); }
+export default function PlaygroundRedirect() { redirect('/'); }
