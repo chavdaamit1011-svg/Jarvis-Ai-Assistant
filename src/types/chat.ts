@@ -13,6 +13,12 @@ export interface MessageError {
   retryable: boolean;
 }
 
+export interface KnowledgeSource {
+  documentTitle: string;
+  chunkIndex: number;
+  score: number;
+}
+
 /** Local, text-only representation compatible with this app's AI SDK text stream. */
 export interface Message {
   id: string;
@@ -24,6 +30,7 @@ export interface Message {
   model?: AIModelId;
   isEdited?: boolean;
   likeStatus?: 'liked' | 'disliked' | null;
+  sources?: KnowledgeSource[];
 }
 
 export interface Conversation {

@@ -1,0 +1,106 @@
+import type { LearningTopic, QuizQuestion } from './types';
+
+const starterQuiz = (topic: string): QuizQuestion[] => [
+  {
+    question: `What is the best first step when learning ${topic}?`,
+    options: ['Understand the simple purpose', 'Memorize every API', 'Skip practical examples', 'Assume it is always correct'],
+    correctOption: 0,
+  },
+  {
+    question: 'Which practice is safest for an AI feature?',
+    options: ['Validate inputs and test outcomes', 'Expose secret keys', 'Trust every generated answer', 'Ignore errors'],
+    correctOption: 0,
+  },
+];
+
+const plannedTopic = (
+  number: number,
+  slug: string,
+  title: string,
+  shortDescription: string,
+  prerequisites: string[],
+): LearningTopic => ({
+  number, slug, title, shortDescription, prerequisites, estimatedMinutes: 12, planned: true,
+  overview: `${title} will be added as a guided Jarvis lesson. For now, focus on the earlier foundations so this topic is easier to understand later.`,
+  keyPoints: ['This lesson is planned.', 'The learning path stays in order so concepts build on each other.', 'No production feature is being enabled from this lesson.'],
+  flow: [{ label: 'Foundation', description: 'Learn the earlier concept first.' }, { label: 'Planned lesson', description: 'A guided explanation and practice will appear here.' }, { label: 'Future project use', description: 'Jarvis can adopt this only after it is designed and tested.' }],
+  realWorldExample: `This is a placeholder example for ${title}; it is intentionally not presented as an implemented Jarvis feature.`,
+  jarvisUsage: 'Planned for a future Jarvis milestone. The current chat and embeddings features are unchanged.',
+  practicalImplementation: 'Planned — no fake code or working integration is shown here.',
+  interviewQuestions: [`What problem does ${title} solve?`, `What safety or reliability trade-off should be considered?`],
+  quiz: starterQuiz(title),
+});
+
+export const LEARNING_TOPICS: LearningTopic[] = [
+  {
+    number: 1, slug: 'llm-fundamentals', title: 'LLM Fundamentals', estimatedMinutes: 15, prerequisites: [], planned: false,
+    shortDescription: 'Understand how a language model turns your words into a helpful response.',
+    overview: 'A Large Language Model (LLM) is a pattern-based text assistant. It reads your message as small pieces, predicts useful next pieces, and repeats that process to form an answer. It can be impressive, but it can still be wrong.',
+    keyPoints: ['LLMs predict likely next text; they do not “know” everything.', 'Clear instructions improve the result.', 'Important claims should be checked with trusted sources.'],
+    flow: [{ label: 'Your message', description: 'You ask Jarvis a question.' }, { label: 'Tokens', description: 'The message becomes small text pieces.' }, { label: 'Model prediction', description: 'The model predicts the next useful pieces.' }, { label: 'Response', description: 'Jarvis streams a readable answer.' }],
+    realWorldExample: 'Autocomplete on a phone suggests the next word. An LLM does a much larger, more flexible version of that for a whole response.',
+    jarvisUsage: 'Jarvis sends the selected conversation history and a safe system prompt to Groq, then streams the model response back to the chat.',
+    practicalImplementation: 'Try asking the same question once vaguely and once with a goal, audience, and desired format. Compare which answer is easier to use.',
+    interviewQuestions: ['What is an LLM predicting?', 'Why can a fluent answer still be inaccurate?', 'How does a system prompt guide behavior?'], quiz: starterQuiz('LLM Fundamentals'),
+  },
+  {
+    number: 2, slug: 'prompt-engineering', title: 'Prompt Engineering', estimatedMinutes: 15, prerequisites: ['LLM Fundamentals'], planned: false,
+    shortDescription: 'Learn to ask AI for the result you actually need.',
+    overview: 'Prompt engineering is writing a clear request. A strong prompt tells the AI the task, useful context, who the answer is for, and the expected format. It is about communication, not secret magic words.',
+    keyPoints: ['State the goal first.', 'Add only the context that changes the answer.', 'Ask for a format such as bullets, a table, or a code example.', 'Review the answer before using it.'],
+    flow: [{ label: 'Goal', description: 'What do you want done?' }, { label: 'Context', description: 'What should the AI know?' }, { label: 'Constraints', description: 'Tone, length, audience, and format.' }, { label: 'Review', description: 'Check the output and improve the prompt if needed.' }],
+    realWorldExample: '“Write an email” is vague. “Write a friendly 100-word follow-up email to a customer about a delayed order” gives the AI a usable target.',
+    jarvisUsage: 'Jarvis assistant modes add trusted instructions for general, coding, research, marketing, and medical-information questions. The server validates the mode instead of trusting arbitrary client instructions.',
+    practicalImplementation: 'Use this template: Role + task + context + audience + output format. Example: “Act as a teacher. Explain embeddings to a beginner using three bullets and one analogy.”',
+    interviewQuestions: ['Which details make a prompt more reliable?', 'Why should prompt output still be reviewed?', 'When is an example useful in a prompt?'], quiz: starterQuiz('Prompt Engineering'),
+  },
+  {
+    number: 3, slug: 'tokenization', title: 'Tokenization', estimatedMinutes: 12, prerequisites: ['LLM Fundamentals'], planned: false,
+    shortDescription: 'See why AI reads text in pieces instead of whole sentences.',
+    overview: 'Before an LLM processes text, it splits it into tokens: small pieces that can be words, parts of words, spaces, or punctuation. Token count affects context limits, speed, and cost.',
+    keyPoints: ['A token is not always one whole word.', 'Different languages and symbols can use different numbers of tokens.', 'Long chat histories need a safe limit.'],
+    flow: [{ label: 'Sentence', description: 'You write normal text.' }, { label: 'Tokenizer', description: 'Text is split into token pieces.' }, { label: 'Token IDs', description: 'Pieces become numbers the model can process.' }, { label: 'Model context', description: 'The model reads the allowed token window.' }],
+    realWorldExample: 'The word “unforgettable” may become more than one token. Emojis, code, and mixed-language text can also use unexpected token counts.',
+    jarvisUsage: 'Jarvis limits the chat history it sends to Groq so one long conversation cannot grow without bound.',
+    practicalImplementation: 'Open the existing tokenizer playground and compare a short sentence, code block, and emoji-heavy sentence.',
+    interviewQuestions: ['Why is a token not always a word?', 'Why do token limits matter for chat history?', 'How can tokenization affect multiple languages?'], quiz: starterQuiz('Tokenization'),
+    playground: { label: 'Open Tokenizer Playground', href: '/playground/tokenizer', description: 'Existing Jarvis developer playground — opens the real tokenizer demo.' },
+  },
+  {
+    number: 4, slug: 'embeddings', title: 'Embeddings', estimatedMinutes: 18, prerequisites: ['LLM Fundamentals', 'Tokenization'], planned: false,
+    shortDescription: 'Turn meaning into numbers so related text can be found.',
+    overview: 'An embedding is a list of numbers (a vector) that represents the meaning of text. Similar meanings tend to have vectors that point in similar directions, even when they use different words.',
+    keyPoints: ['Embeddings represent semantic meaning, not a perfect truth score.', 'Cosine similarity compares the direction of two vectors.', 'The current Jarvis demo calculates embeddings locally on the server.'],
+    flow: [{ label: 'Text', description: 'A query or document is provided.' }, { label: 'Embedding model', description: 'A server-side model creates a numeric vector.' }, { label: 'Similarity', description: 'Cosine similarity compares vectors.' }, { label: 'Ranked matches', description: 'The most related documents appear first.' }],
+    realWorldExample: '“How do I advertise my shop online?” can be close to a document about social media, SEO, and paid advertising, even though the wording differs.',
+    jarvisUsage: 'Jarvis already includes a local embedding and semantic-search developer route. It is a foundation for future retrieval, not a completed RAG system.',
+    practicalImplementation: 'Open the embedding test page and run “How do I promote my business online?” against the sample documents. Digital Marketing should rank first.',
+    interviewQuestions: ['What does an embedding vector represent?', 'Why use cosine similarity?', 'Why should document vectors later be stored instead of recalculated each search?'], quiz: starterQuiz('Embeddings'),
+    playground: { label: 'Open Embedding Test', href: '/embedding-test', description: 'Existing server-side semantic-search demo — opens the real test page.' },
+  },
+  {
+    number: 5, slug: 'rag', title: 'RAG', estimatedMinutes: 22, prerequisites: ['Embeddings'], planned: false,
+    shortDescription: 'Retrieve useful knowledge before asking an AI to answer.',
+    overview: 'RAG means Retrieval-Augmented Generation. AI pehle relevant information search karta hai, fir us information ke basis par answer banata hai. This helps when answers need to use your own policies, guides, or documentation.',
+    keyPoints: ['Normal chat answers from the model and its prompt; RAG adds retrieved reference data.', 'RAG is different from fine-tuning: documents can change without retraining the model.', 'RAG reduces hallucinations when relevant, high-quality context is found, but it cannot guarantee correctness.'],
+    flow: [{ label: 'Ingestion', description: 'Clean text is split into overlapping chunks and each chunk becomes an embedding.' }, { label: 'Question embedding', description: 'The user question is converted into the same kind of vector.' }, { label: 'Top-K retrieval', description: 'Cosine similarity ranks chunks; a minimum score filters weak matches.' }, { label: 'Context builder', description: 'Useful chunks are deduplicated, budgeted, labelled, and treated as untrusted data.' }, { label: 'Grounded answer', description: 'Groq receives the question plus references and should state when information is missing.' }],
+    realWorldExample: 'A company policy chatbot searches refund rules before it answers. The same pattern supports PDF assistants, website support, and coding documentation helpers.',
+    jarvisUsage: 'Implemented: KnowledgeDocument and KnowledgeChunk MongoDB collections, ingestion, retrieval, safe context building, /api/knowledge routes, and opt-in Knowledge Chat. Current limits: manual text only, normal MongoDB scans for small development data, and no source persistence after a page refresh.',
+    practicalImplementation: '1. Open Knowledge Base. 2. Add the Refund Policy sample. 3. Enable Knowledge in the chat composer. 4. Ask “What is the refund period?” 5. Check the source card under Jarvis’s response. Common errors: MongoDB is not running, the first local embedding request is still loading, or no chunk meets the similarity threshold.',
+    interviewQuestions: ['Beginner: What problem does RAG solve?', 'Intermediate: Why split documents into chunks?', 'Intermediate: What do top-K and a similarity threshold do?', 'Scenario: How would you prevent a policy document from overriding system instructions?'],
+    playground: { label: 'Open RAG Knowledge Playground', href: '/knowledge', description: 'Add public sample knowledge here, then use Knowledge Chat to test retrieval and grounded answers.' },
+    quiz: [{ question: 'What does RAG stand for?', options: ['Retrieval-Augmented Generation', 'Rapid AI Graph', 'Remote Answer Generator', 'Random AI Guessing'], correctOption: 0 }, { question: 'Why are documents split into chunks?', options: ['To retrieve focused relevant sections', 'To expose embeddings', 'To train Groq directly', 'To avoid validation'], correctOption: 0 }, { question: 'What does top-K mean?', options: ['The number of highest-ranked results kept', 'A secret API key', 'The document size limit', 'The model temperature'], correctOption: 0 }, { question: 'What is a similarity threshold for?', options: ['Filtering weak matches', 'Encrypting text', 'Generating PDF files', 'Changing the system prompt'], correctOption: 0 }, { question: 'How is RAG different from fine-tuning?', options: ['RAG retrieves changing references at query time', 'RAG removes the LLM', 'Fine-tuning uses no data', 'They are identical'], correctOption: 0 }, { question: 'How should retrieved text be treated?', options: ['As untrusted reference data', 'As system instructions', 'As an API key', 'As verified truth'], correctOption: 0 }, { question: 'What should happen if no relevant chunk is found?', options: ['Say the knowledge base lacks enough information', 'Invent an answer', 'Show embeddings', 'Retry forever'], correctOption: 0 }, { question: 'What does RAG help reduce?', options: ['Unsupported answers when good context exists', 'All application errors', 'Database storage', 'The need for user questions'], correctOption: 0 }],
+  },
+  plannedTopic(6, 'vector-database', 'Vector Database', 'Store embeddings and search by meaning at scale.', ['Embeddings']),
+  plannedTopic(7, 'ai-sdk', 'AI SDK', 'Use a toolkit to connect streaming AI features to an app.', ['LLM Fundamentals', 'Prompt Engineering']),
+  plannedTopic(8, 'tool-calling', 'Tool Calling', 'Let an AI request approved software actions safely.', ['AI SDK']),
+  plannedTopic(9, 'ai-memory', 'AI Memory', 'Manage helpful context without treating every detail as permanent.', ['RAG']),
+  plannedTopic(10, 'ai-security', 'AI Security', 'Protect users, data, and keys when building AI products.', ['Prompt Engineering']),
+  plannedTopic(11, 'ai-agents', 'AI Agents', 'Plan and complete multi-step work using controlled tools.', ['Tool Calling', 'AI Memory']),
+  plannedTopic(12, 'mcp', 'MCP', 'Connect AI applications to approved tools through a shared protocol.', ['Tool Calling']),
+  plannedTopic(13, 'nextjs-integration', 'Next.js Integration', 'Connect AI capabilities to a Next.js application safely.', ['AI SDK']),
+  plannedTopic(14, 'database-integration', 'Database Integration', 'Store application data reliably for a real AI product.', ['Next.js Integration']),
+  plannedTopic(15, 'production-deployment', 'Production Deployment', 'Prepare an AI application for a secure production release.', ['Database Integration', 'AI Security']),
+];
+
+export const getLearningTopic = (slug: string) => LEARNING_TOPICS.find((topic) => topic.slug === slug);

@@ -8,12 +8,13 @@ import {
   Paperclip,
   Send,
   Square,
+  Database,
 } from 'lucide-react';
 
 const MAX_MESSAGE_LENGTH = 8000;
 
 export function ChatInput() {
-  const { sendMessage, stopGenerating, isStreaming, persona } = useChat();
+  const { sendMessage, stopGenerating, isStreaming, persona, knowledgeMode, setKnowledgeMode } = useChat();
   const [input, setInput] = useState('');
   const [webSearch, setWebSearch] = useState(false);
   const [codeMode, setCodeMode] = useState(false);
@@ -82,6 +83,16 @@ export function ChatInput() {
                 title="Attach File"
               >
                 <Paperclip size={16} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setKnowledgeMode(knowledgeMode === 'off' ? 'public' : 'off')}
+                className={`flex items-center gap-1 px-2 py-1 rounded-lg border transition-colors ${knowledgeMode !== 'off' ? 'bg-cyan-950/60 text-cyan-300 border-cyan-700' : 'border-[var(--border-color)]/50 hover:bg-[var(--bg-tertiary)]'}`}
+                title="Toggle Knowledge Chat"
+              >
+                <Database size={14} />
+                <span className="hidden sm:inline">{knowledgeMode === 'off' ? 'Knowledge' : 'Knowledge on'}</span>
               </button>
 
               <button
