@@ -22,6 +22,7 @@ import { evaluateKnowledge } from '@/lib/ai/evaluation';
 import { routeCapability, resolveEntityBeforeRouting } from '@/lib/ai/brain';
 import { toolRegistry } from '@/lib/ai/tools';
 import { createTrace } from '@/lib/ai/trace';
+import { runShadowComparison, type ShadowComparison } from '@/lib/ai/brain/shadow-mode';
 
 export const runtime = 'nodejs';
 
@@ -99,6 +100,8 @@ export async function POST(req: Request) {
 
   const latestUserQuestion = [...parsed.data.messages].reverse().find((message) => message.role === 'user')?.content;
   const language = detectResponseLanguage(latestUserQuestion ?? '');
+  const shadowModeEnabled = process.env.AI_BRAIN_SHADOW_MODE === 'true';
+  let shadowComparison: Promise<ShadowComparison> | null = null;
   const traceSession = latestUserQuestion ? createTrace(latestUserQuestion) : null;
   if (traceSession) {
     await traceSession.update({ queryUnderstanding: { normalizedQuery: latestUserQuestion?.toLowerCase().trim(), intent: 'pending', entities: [], requestedFields: [], ambiguityDetected: false, detectedLanguage: language.detectedLanguage, responseLanguage: language.responseLanguage, languageConfidence: language.confidence, formattingPath: 'pending' } });
@@ -107,6 +110,19 @@ export async function POST(req: Request) {
   const answerHeaders = (metadata: AnswerMetadata, sources: Source[] = []) => {
     const tracedMetadata = { ...metadata, traceId: traceSession?.trace.traceId };
     if (traceSession) {
+      if (shadowComparison) {
+        void shadowComparison.then((shadow) => {
+          const oldFlow = { ...shadow.oldFlow, answerSource: metadata.answerSource, fallbackUsed: metadata.usedFallback };
+          const answerSourceMatch = shadow.newBrain.answerSource === metadata.answerSource.replaceAll('-', '_');
+          const comparison = { ...shadow.comparison, answerSourceMatch, overallMatch: shadow.comparison.capabilityMatch && shadow.comparison.entityMatch && shadow.comparison.requestedFieldsMatch && answerSourceMatch };
+          return traceSession.update({ shadowModeEnabled: true, oldRoutingResult: oldFlow, newPlannerResult: { capability: shadow.newBrain.capability, operation: shadow.newBrain.operation, entities: shadow.newBrain.entities, requestedFields: shadow.newBrain.requestedFields }, newExecutorResult: { status: shadow.newBrain.executorStatus, answerSource: shadow.newBrain.answerSource, fallbackAllowed: shadow.newBrain.fallbackAllowed }, routingDifferences: comparison, comparisonStatus: comparison.overallMatch ? 'match' : 'mismatch' });
+        }).then(() => {
+          if (process.env.NODE_ENV !== 'production') console.info('[AI Brain shadow]', { oldCapability: 'recorded', match: 'recorded' });
+        }).catch((error: unknown) => {
+          void traceSession.update({ shadowModeEnabled: true, comparisonStatus: 'error', errors: [...traceSession.trace.errors, `shadow: ${error instanceof Error ? error.message.slice(0, 120) : 'unknown failure'}`] });
+          if (process.env.NODE_ENV !== 'production') console.info('[AI Brain shadow]', { error: 'shadow execution failed' });
+        });
+      }
       void traceSession.complete({ generation: { provider: metadata.answerSource === 'general-ai' || metadata.answerSource === 'rag' ? 'groq' : 'deterministic', answerSource: metadata.answerSource, fallbackUsed: metadata.usedFallback } }).then(() => {
         if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] trace persisted and returned to client', { traceId: traceSession.trace.traceId });
       });
@@ -166,6 +182,10 @@ export async function POST(req: Request) {
     }
     const capability = await routeCapability(latestUserQuestion, { knowledgeMode: requestedStrategy, entityMatches: capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous });
     if(traceSession)await traceSession.update({routing:{capability:capability.capability,reasonCode:capability.reasonCode,confidence:capability.confidence,deterministicOrAI:capability.fallbackUsed?'fallback':'deterministic'},entityResolution:{candidates:capabilityEntity.matches,selectedEntity:capability.matchedEntity,matchType:capability.entityMatchType,confidence:capability.confidence}});
+    if (shadowModeEnabled && traceSession) {
+      shadowComparison = runShadowComparison({ query: latestUserQuestion, context: { requestId: traceSession.trace.requestId, conversationId: undefined, assistantMode: requestedStrategy, abortSignal: req.signal }, oldFlow: { capability: capability.capability, entity: capability.matchedEntity, requestedFields: capability.requestedOperation ? [capability.requestedOperation] : [], fallbackUsed: capability.fallbackUsed }, entityHints: capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous, responseLanguage: language.responseLanguage }).catch((error: unknown) => Promise.reject(error));
+      await traceSession.update({ shadowModeEnabled: true });
+    }
     if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] capability router', { selectedCapability: capability.capability, confidence: capability.confidence, reasonCode: capability.reasonCode, detectedEntities: capability.entities, deterministic: !capability.fallbackUsed, fallbackUsed: capability.fallbackUsed ?? false });
     if (capability.capability === 'clarification') return new Response(capability.clarificationQuestion ?? formatKnowledgeFacts({ language: language.detectedLanguage, kind: 'clarification' }), { headers: answerHeaders({ answerSource: 'clarification', usedFallback: false, confidence: capability.confidence, evaluationDecision: 'clarify' }) });
     if (capability.capability === 'utility') {
