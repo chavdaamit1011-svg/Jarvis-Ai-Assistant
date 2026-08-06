@@ -19,7 +19,9 @@ import {
   User,
   Zap,
   ShieldAlert,
+  Bug,
 } from 'lucide-react';
+import { DebugTraceDrawer } from './debug-trace-drawer';
 
 interface ChatItemProps {
   message: Message;
@@ -36,6 +38,7 @@ export function ChatItem({ message }: ChatItemProps) {
 
   const [copied, setCopied] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
+  const [isDebugOpen, setIsDebugOpen] = useState(false);
   const [editContent, setEditContent] = useState(message.content);
 
   const isUser = message.role === 'user';
@@ -211,6 +214,17 @@ export function ChatItem({ message }: ChatItemProps) {
                   <RefreshCw size={14} />
                 </button>
 
+                {process.env.NODE_ENV !== 'production' && (
+                  <button
+                    onClick={() => setIsDebugOpen(true)}
+                    className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
+                    title="View Debug"
+                  >
+                    <Bug size={14} />
+                    <span>View Debug</span>
+                  </button>
+                )}
+
                 <div className="h-3 w-[1px] bg-[var(--border-color)] mx-1" />
 
                 <button
@@ -241,6 +255,7 @@ export function ChatItem({ message }: ChatItemProps) {
           </div>
         )}
       </div>
+      {!isUser && process.env.NODE_ENV !== 'production' && <DebugTraceDrawer traceId={message.traceId ?? message.answerMetadata?.traceId} open={isDebugOpen} onClose={() => setIsDebugOpen(false)} />}
     </div>
   );
 }
