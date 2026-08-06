@@ -22,6 +22,7 @@ export interface KnowledgeSource {
 export type AnswerSource = 'knowledge-graph' | 'rag' | 'general-ai' | 'structured-data' | 'clarification' | 'web-search-required';
 
 export interface AnswerMetadata {
+  traceId?: string;
   answerSource: AnswerSource;
   usedFallback: boolean;
   confidence?: number;

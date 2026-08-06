@@ -73,7 +73,10 @@ export async function lookupKnowledgeGraph(input: { query: string; understanding
   const asksOwner = input.understanding.requestedField === 'owner' || /\b(?:owner|owns|own|built|banaya)\b/i.test(input.query);
   const asksTechnology = input.understanding.requestedField === 'skills' || /\b(?:tech|technology|technologies|skills?|works?\s+with)\b/i.test(input.query);
   const asksProject = input.understanding.requestedField === 'projects' || /\bprojects?\b/i.test(input.query);
-  const broadIdentity = input.understanding.requestedField === 'summary' || /\b(?:who is|about|kon he|kon hai|kaun hai|kya karta)\b/i.test(input.query);
+  // "about" is only broad when no specific requested field was detected.
+  // For example, "Tell me about X's education" must remain education-only.
+  const broadIdentity = input.understanding.requestedField === 'summary'
+    || (input.understanding.requestedField === 'unknown' && /\b(?:who is|about|kon he|kon hai|kaun hai|kya karta)\b/i.test(input.query));
 
   // A relationship question can name its target instead of its source entity.
   if (asksOwner) {

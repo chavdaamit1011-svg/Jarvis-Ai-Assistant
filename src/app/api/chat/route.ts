@@ -103,7 +103,53 @@ export async function POST(req: Request) {
   let preRoutingEntity: Awaited<ReturnType<typeof resolveEntityBeforeRouting>> | null = null;
   if (latestUserQuestion) {
     let capabilityEntity = { matches: [] as Array<{ type: string; name: string; id?:string }>, ambiguous: false };
-    try { const preResolved=await resolveEntityBeforeRouting(latestUserQuestion); preRoutingEntity=preResolved; capabilityEntity={matches:preResolved.matches.map(match=>({type:match.type,name:match.name,id:match.id})),ambiguous:preResolved.route==='clarification'}; if(process.env.NODE_ENV!=='production')console.info('[API /api/chat] pre-routing entity resolution',{entityCandidates:preResolved.matches,selectedEntity:preResolved.entity,candidateCount:preResolved.matches.length,autoSelected:preResolved.route==='knowledge',clarificationNeeded:preResolved.route==='clarification',reason:preResolved.reason}); } catch { /* Entity lookup failure must not block general chat. */ }
+    try {
+      const graphResolved = await resolveEntityBeforeRouting(latestUserQuestion);
+      preRoutingEntity = graphResolved;
+      capabilityEntity = {
+        matches: graphResolved.matches.map((match) => ({ type: match.type, name: match.name, id: match.id })),
+        ambiguous: graphResolved.route === 'clarification',
+      };
+
+      // Documents created before the graph index can still expose entity metadata.
+      // A unique Knowledge Base match is authoritative before general-AI fallback.
+      if (graphResolved.route === 'general_ai') {
+        const knowledgeBaseResolved = await resolveKnowledgeEntities(latestUserQuestion);
+
+        if (knowledgeBaseResolved.resolved) {
+          capabilityEntity = {
+            matches: [{ type: knowledgeBaseResolved.resolved.type, name: knowledgeBaseResolved.resolved.name }],
+            ambiguous: false,
+          };
+          preRoutingEntity = {
+            entity: knowledgeBaseResolved.resolved.name,
+            entityId: null,
+            confidence: 0.8,
+            route: 'knowledge',
+            reason: 'KNOWLEDGE_BASE_ENTITY_RESOLVED',
+            matches: capabilityEntity.matches.map((match) => ({ id: '', name: match.name, type: match.type })),
+          };
+        } else if (knowledgeBaseResolved.ambiguous) {
+          capabilityEntity = {
+            matches: knowledgeBaseResolved.matches.map((match) => ({ type: match.type, name: match.name })),
+            ambiguous: true,
+          };
+        }
+      }
+
+      if (process.env.NODE_ENV !== 'production') {
+        console.info('[API /api/chat] pre-routing entity resolution', {
+          entityCandidates: capabilityEntity.matches,
+          selectedEntity: preRoutingEntity.entity,
+          candidateCount: capabilityEntity.matches.length,
+          autoSelected: preRoutingEntity.route === 'knowledge',
+          clarificationNeeded: capabilityEntity.ambiguous,
+          reason: preRoutingEntity.reason,
+        });
+      }
+    } catch {
+      // Entity lookup failure must not block general chat.
+    }
     const capability = await routeCapability(latestUserQuestion, { knowledgeMode: requestedStrategy, entityMatches: capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous });
     if(traceSession)await traceSession.update({routing:{capability:capability.capability,reasonCode:capability.reasonCode,confidence:capability.confidence,deterministicOrAI:capability.fallbackUsed?'fallback':'deterministic'},entityResolution:{candidates:capabilityEntity.matches,selectedEntity:capability.matchedEntity,matchType:capability.entityMatchType,confidence:capability.confidence}});
     if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] capability router', { selectedCapability: capability.capability, confidence: capability.confidence, reasonCode: capability.reasonCode, detectedEntities: capability.entities, deterministic: !capability.fallbackUsed, fallbackUsed: capability.fallbackUsed ?? false });

@@ -2,6 +2,7 @@ import { queryUnderstandingSchema } from './schema';
 import { normalizeQuery } from './normalize-query';
 import type { QueryUnderstanding } from './types';
 import { classifyLinkRequest } from '@/lib/ai/link-resolution';
+import { normalizeRequestedField } from './field-normalization';
 
 type RequestedField = QueryUnderstanding['requestedField'];
 type Platform = QueryUnderstanding['platform'];
@@ -55,6 +56,8 @@ function detectEntityName(terms: string) {
 }
 
 function fieldFromQuery(normalized: string): { field: RequestedField; platform: Platform; confidence: number } {
+  const canonical=normalizeRequestedField(normalized); const selected=canonical.requestedFields[0];
+  if(selected==='education'||selected==='projects'||selected==='skills')return{field:selected,platform:'unknown',confidence:canonical.confidence};
   const terms = normalized.split(' ').filter(Boolean);
   const hasLinkedIn = terms.some((term) => matchesTerm(term, LINKEDIN_TERMS));
   const hasGitHub = terms.some((term) => matchesTerm(term, GITHUB_TERMS));
