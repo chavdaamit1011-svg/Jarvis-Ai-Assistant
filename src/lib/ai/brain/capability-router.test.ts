@@ -1,0 +1,14 @@
+import assert from 'node:assert/strict'; import test from 'node:test'; import { routeCapability } from './capability-router';
+const hybrid = { knowledgeMode: 'knowledge_hybrid' as const }; const known = { ...hybrid, entityMatches: [{ type:'person', name:'Example Person' }] };
+test('routes a known entity project question to knowledge', async () => assert.equal((await routeCapability('Example Person ke projects batao', known)).capability,'knowledge'));
+test('routes a known entity identity question to knowledge', async () => assert.equal((await routeCapability('Example Person kon hai', known)).capability,'knowledge'));
+test('routes JavaScript to general AI', async () => assert.equal((await routeCapability('JavaScript kya hai', hybrid)).capability,'general_ai'));
+test('routes GST to utility', async () => assert.equal((await routeCapability('1800 ka 18% GST calculate karo', hybrid)).capability,'utility'));
+test('routes latest update to web search', async () => assert.equal((await routeCapability('WhatsApp ka latest update kya hai', hybrid)).capability,'web_search'));
+test('routes PDF requests to file', async () => assert.equal((await routeCapability('Is PDF ka summary do', hybrid)).capability,'file'));
+test('routes incomplete links to clarification', async () => assert.equal((await routeCapability('Link bhej', hybrid)).capability,'clarification'));
+test('routes exact entity links to knowledge', async () => assert.equal((await routeCapability('Example Person ki LinkedIn link', known)).capability,'knowledge'));
+test('routes official platform request as general AI deterministic fallback', async () => assert.equal((await routeCapability('LinkedIn ki official link', hybrid)).capability,'general_ai'));
+test('routes unknown entity hybrid to general AI', async () => assert.equal((await routeCapability('Unknown Person kon hai', hybrid)).capability,'general_ai'));
+test('routes unknown entity strict to unsupported', async () => assert.equal((await routeCapability('Unknown Person kon hai', { knowledgeMode:'knowledge_strict' })).capability,'unsupported'));
+test('routes ambiguous entity to clarification', async () => assert.equal((await routeCapability('Person kon hai', { ...hybrid, entityAmbiguous:true })).capability,'clarification'));

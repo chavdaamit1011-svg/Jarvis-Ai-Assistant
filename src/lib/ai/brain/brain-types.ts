@@ -1,0 +1,3 @@
+export type Capability = 'knowledge' | 'general_ai' | 'utility' | 'web_search' | 'file' | 'clarification' | 'unsupported';
+export type CapabilityRoute = { capability: Capability; intent: string; entities: Array<{ type: string; name: string }>; requestedOperation: string | null; requiresCurrentInformation: boolean; requiresKnowledgeSearch: boolean; requiresClarification: boolean; clarificationQuestion: string | null; confidence: number; reasonCode: string; usedAiRouting?: boolean; fallbackUsed?: boolean };
+export type BrainContext = { knowledgeMode: 'normal' | 'knowledge_strict' | 'knowledge_hybrid'; entityMatches?: Array<{ type: string; name: string }>; entityAmbiguous?: boolean };

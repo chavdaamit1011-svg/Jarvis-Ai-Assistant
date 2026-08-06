@@ -12,12 +12,13 @@ import { ASSISTANT_MODES, buildSystemPrompt } from '@/lib/ai/prompts';
 import { aggregateAnswerContext, lookupEntityPlatformLink, lookupStructuredValue, resolveKnowledgeEntities, retrieveContext } from '@/lib/ai/rag';
 import { parseQueryDeterministically } from '@/lib/ai/query-understanding';
 import { classifyLinkRequest, findExplicitLinkEntityName, getOfficialPlatformUrl } from '@/lib/ai/link-resolution';
-import { EXACT_VALUE_FIELDS, requiresCurrentInformation, routeAnswer, type AnswerStrategy } from '@/lib/ai/router';
+import { EXACT_VALUE_FIELDS, routeAnswer, type AnswerStrategy } from '@/lib/ai/router';
 import { createReliableGroqTextStream } from '@/lib/ai/groq/reliable-stream';
 import { getEntityProfile } from '@/lib/ai/knowledge-index';
 import { buildClarification, detectAmbiguity } from '@/lib/ai/clarification';
 import { lookupKnowledgeGraph } from '@/lib/ai/knowledge-graph';
 import { evaluateKnowledge } from '@/lib/ai/evaluation';
+import { routeCapability } from '@/lib/ai/brain';
 
 export const runtime = 'nodejs';
 
@@ -93,13 +94,17 @@ export async function POST(req: Request) {
   }
 
   const latestUserQuestion = [...parsed.data.messages].reverse().find((message) => message.role === 'user')?.content;
-  if (latestUserQuestion && requiresCurrentInformation(latestUserQuestion)) {
-    if (process.env.NODE_ENV !== 'production') {
-      console.info('[API /api/chat] selected routing path: web_search_required', { timeSensitive: true });
-    }
-    return new Response('Is question ka accurate answer dene ke liye live web search required hai. Web Search abhi enabled nahi hai.', {
-      headers: answerHeaders({ answerSource: 'web-search-required', usedFallback: false }),
-    });
+  const requestedStrategy: AnswerStrategy = parsed.data.chatMode ?? parsed.data.answerStrategy ?? (parsed.data.knowledgeMode === 'off' ? 'normal' : 'knowledge_hybrid');
+  if (latestUserQuestion) {
+    let capabilityEntity = { matches: [] as Array<{ type: string; name: string }>, ambiguous: false };
+    try { const resolved = await resolveKnowledgeEntities(latestUserQuestion); capabilityEntity = { matches: resolved.matches.map((match) => ({ type: match.type, name: match.name })), ambiguous: resolved.ambiguous }; } catch { /* Entity lookup failure must not block general chat. */ }
+    const capability = await routeCapability(latestUserQuestion, { knowledgeMode: requestedStrategy, entityMatches: capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous });
+    if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] capability router', { selectedCapability: capability.capability, confidence: capability.confidence, reasonCode: capability.reasonCode, detectedEntities: capability.entities, deterministic: !capability.fallbackUsed, fallbackUsed: capability.fallbackUsed ?? false });
+    if (capability.capability === 'clarification') return new Response(capability.clarificationQuestion ?? 'Kripya thoda aur specific batayein.', { headers: answerHeaders({ answerSource: 'clarification', usedFallback: false, confidence: capability.confidence, evaluationDecision: 'clarify' }) });
+    if (capability.capability === 'utility') return new Response('Utility capability is required for this request, but calculator execution is not implemented yet.', { headers: answerHeaders({ answerSource: 'general-ai', usedFallback: false, confidence: capability.confidence }) });
+    if (capability.capability === 'web_search') return new Response('Live Web Search capability is required but not implemented yet.', { headers: answerHeaders({ answerSource: 'web-search-required', usedFallback: false, confidence: capability.confidence }) });
+    if (capability.capability === 'file') return new Response('File capability is planned. Please add the document to the Knowledge Base first.', { headers: answerHeaders({ answerSource: 'general-ai', usedFallback: false, confidence: capability.confidence }) });
+    if (capability.capability === 'unsupported') return new Response('Knowledge Base me is question ke liye sufficient information available nahi hai.', { headers: answerHeaders({ answerSource: 'rag', usedFallback: false, confidence: capability.confidence, evaluationDecision: 'insufficient' }) });
   }
 
   if (!apiKey?.trim()) {
@@ -117,7 +122,7 @@ export async function POST(req: Request) {
     let sources: Source[] = [];
     let answerMetadata: AnswerMetadata = { answerSource: 'general-ai', usedFallback: false };
     let messages = parsed.data.messages;
-    const answerStrategy: AnswerStrategy = parsed.data.chatMode ?? parsed.data.answerStrategy ?? (parsed.data.knowledgeMode === 'off' ? 'normal' : 'knowledge_hybrid');
+    const answerStrategy = requestedStrategy;
     if (answerStrategy !== 'normal') {
       try {
         const lastUserIndex = [...messages].map((message) => message.role).lastIndexOf('user');

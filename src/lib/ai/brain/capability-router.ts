@@ -1,0 +1,2 @@
+import { capabilityRouteSchema } from './capability-schema'; import { routeDeterministically } from './deterministic-router'; import { routeWithAiFallback } from './ai-router'; import type { BrainContext } from './brain-types';
+export async function routeCapability(query: string, context: BrainContext) { const deterministic = routeDeterministically(query, context); return capabilityRouteSchema.parse(deterministic ?? await routeWithAiFallback(query, context)); }
