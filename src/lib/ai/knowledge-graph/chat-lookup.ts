@@ -1,0 +1,155 @@
+import 'server-only';
+
+import { connectToDatabase } from '@/lib/db/connect';
+import KnowledgeChunk from '@/models/KnowledgeChunk';
+import KnowledgeDocument from '@/models/KnowledgeDocument';
+import KnowledgeEntity from '@/models/KnowledgeEntity';
+import KnowledgeFact from '@/models/KnowledgeFact';
+import KnowledgeRelationship from '@/models/KnowledgeRelationship';
+import type { QueryUnderstanding } from '@/lib/ai/query-understanding';
+import { normalizeEntityName } from './normalize-entity';
+
+export type GraphChatSource = { documentTitle: string; chunkIndex: number; score: number; documentId: string; chunkId: string };
+export type GraphChatResult = {
+  kind: 'answer' | 'ambiguous' | 'none';
+  answer?: string;
+  entitiesUsed: string[];
+  factsUsed: string[];
+  relationshipsUsed: string[];
+  sources: GraphChatSource[];
+  candidates?: string[];
+};
+
+const EXACT_PREDICATES: Partial<Record<QueryUnderstanding['requestedField'], string>> = {
+  linkedin_url: 'linkedin_url', github_url: 'github_url', portfolio_url: 'portfolio_url', website_url: 'website_url', email: 'email', phone: 'phone', role: 'role',
+};
+const STOP_WORDS = new Set(['amit', 'who', 'what', 'is', 'are', 'the', 'a', 'an', 'ka', 'ki', 'ke', 'kis', 'kya', 'kon', 'kaun', 'he', 'hai', 'hain', 'me', 'par', 'on', 'with', 'works', 'work', 'owner', 'owners', 'of', 'ai']);
+
+function unique(values: string[]) { return [...new Set(values.filter(Boolean))]; }
+function queryTerms(query: string) { return normalizeEntityName(query).split(' ').filter((term) => term.length > 1 && !STOP_WORDS.has(term)); }
+function matchesName(entity: { normalizedName: string; aliases?: string[] }, name: string | null, query: string) {
+  const candidates = [entity.normalizedName, ...(entity.aliases ?? []).map(normalizeEntityName)];
+  if (name) {
+    const target = normalizeEntityName(name);
+    const reversed = target.split(' ').reverse().join(' ');
+    if (candidates.includes(target) || candidates.includes(reversed)) return true;
+    const targetTerms = target.split(' ');
+    return targetTerms.length > 1 && candidates.some((candidate) => targetTerms.every((term) => candidate.split(' ').includes(term)));
+  }
+  const terms = queryTerms(query);
+  return terms.length > 0 && candidates.some((candidate) => terms.some((term) => candidate.split(' ').includes(term)));
+}
+
+function valueText(value: unknown) { return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').join(', ') : String(value ?? ''); }
+function naturalList(values: string[]) { return values.length > 1 ? `${values.slice(0, -1).join(', ')} aur ${values.at(-1)}` : values[0] ?? ''; }
+
+async function sourcesFor(references: Array<{ documentId: unknown; chunkId: unknown }>) {
+  const documentIds = unique(references.map((reference) => String(reference.documentId)));
+  const chunkIds = unique(references.map((reference) => String(reference.chunkId)));
+  const [documents, chunks] = await Promise.all([
+    KnowledgeDocument.find({ _id: { $in: documentIds } }).select('title').lean(),
+    KnowledgeChunk.find({ _id: { $in: chunkIds } }).select('documentId chunkIndex').lean(),
+  ]);
+  const titles = new Map(documents.map((document) => [String(document._id), document.title]));
+  const chunkMap = new Map(chunks.map((chunk) => [String(chunk._id), chunk]));
+  return unique(chunkIds).flatMap((chunkId) => {
+    const chunk = chunkMap.get(chunkId);
+    if (!chunk) return [];
+    return [{ documentTitle: titles.get(String(chunk.documentId)) ?? 'Knowledge document', chunkIndex: chunk.chunkIndex, score: 1, documentId: String(chunk.documentId), chunkId }];
+  });
+}
+
+/**
+ * Deterministic graph-first answer lookup. It returns only stored facts and
+ * relationships; callers can safely fall through to structured/RAG/LLM paths.
+ */
+export async function lookupKnowledgeGraph(input: { query: string; understanding: QueryUnderstanding }): Promise<GraphChatResult> {
+  await connectToDatabase();
+  const entities = await KnowledgeEntity.find({ status: 'active' }).select('canonicalName normalizedName aliases entityType').lean();
+  const matches = entities.filter((entity) => matchesName(entity, input.understanding.entityName, input.query));
+  const namedMatches = input.understanding.entityName ? matches : matches.filter((entity) => queryTerms(input.query).some((term) => entity.normalizedName.split(' ').includes(term)));
+  if (namedMatches.length > 1) return { kind: 'ambiguous', entitiesUsed: [], factsUsed: [], relationshipsUsed: [], sources: [], candidates: namedMatches.map((entity) => entity.canonicalName) };
+
+  const entity = namedMatches[0];
+  const asksOwner = input.understanding.requestedField === 'owner' || /\b(?:owner|owns|own|built|banaya)\b/i.test(input.query);
+  const asksTechnology = input.understanding.requestedField === 'skills' || /\b(?:tech|technology|technologies|skills?|works?\s+with)\b/i.test(input.query);
+  const asksProject = input.understanding.requestedField === 'projects' || /\bprojects?\b/i.test(input.query);
+  const broadIdentity = input.understanding.requestedField === 'summary' || /\b(?:who is|about|kon he|kon hai|kaun hai|kya karta)\b/i.test(input.query);
+
+  // Relationship questions such as "Who owns Jarvis AI?" can name the target.
+  if (asksOwner) {
+    const target = entity ?? entities.find((candidate) => matchesName(candidate, null, input.query));
+    if (target) {
+      const relationships = await KnowledgeRelationship.find({ targetEntityId: target._id, relationshipType: 'OWNER_OF', isConflicting: false }).lean();
+      if (relationships.length === 1) {
+        const owner = entities.find((candidate) => String(candidate._id) === String(relationships[0].sourceEntityId));
+        if (owner) {
+          const sources = await sourcesFor(relationships);
+          return { kind: 'answer', answer: `${owner.canonicalName} ${target.canonicalName} ke owner hain.`, entitiesUsed: [String(owner._id), String(target._id)], factsUsed: [], relationshipsUsed: relationships.map((item) => String(item._id)), sources };
+        }
+      }
+    }
+  }
+  if (!entity) return { kind: 'none', entitiesUsed: [], factsUsed: [], relationshipsUsed: [], sources: [] };
+
+  if (asksTechnology && entity.entityType === 'technology') {
+    const relationships = await KnowledgeRelationship.find({ targetEntityId: entity._id, relationshipType: 'USES_TECHNOLOGY', isConflicting: false }).lean();
+    if (relationships.length === 1) {
+      const person = entities.find((candidate) => String(candidate._id) === String(relationships[0].sourceEntityId));
+      if (person) {
+        const sources = await sourcesFor(relationships);
+        return { kind: 'answer', answer: `${person.canonicalName} ${entity.canonicalName} par kaam karte hain.`, entitiesUsed: [String(person._id), String(entity._id)], factsUsed: [], relationshipsUsed: relationships.map((item) => String(item._id)), sources };
+      }
+    }
+  }
+
+  const [facts, outgoing] = await Promise.all([
+    KnowledgeFact.find({ entityId: entity._id }).lean(),
+    KnowledgeRelationship.find({ sourceEntityId: entity._id }).lean(),
+  ]);
+  const targetIds = unique(outgoing.map((relationship) => String(relationship.targetEntityId)));
+  const targets = targetIds.length ? await KnowledgeEntity.find({ _id: { $in: targetIds } }).select('canonicalName').lean() : [];
+  const namesById = new Map(targets.map((target) => [String(target._id), target.canonicalName]));
+  const references = [...facts, ...outgoing];
+  const sources = await sourcesFor(references);
+  const factValues = (predicate: string) => unique(facts.filter((fact) => fact.predicate === predicate && !fact.isConflicting).map((fact) => valueText(fact.value)));
+  const relationValues = (relationshipType: string) => unique(outgoing.filter((relationship) => relationship.relationshipType === relationshipType && !relationship.isConflicting).map((relationship) => namesById.get(String(relationship.targetEntityId)) ?? ''));
+  const exactPredicate = EXACT_PREDICATES[input.understanding.requestedField];
+  if (exactPredicate) {
+    if (facts.some((fact) => fact.predicate === exactPredicate && fact.isConflicting)) {
+      return { kind: 'answer', answer: `Uploaded knowledge mein ${entity.canonicalName} ke ${input.understanding.requestedField.replace('_', ' ')} ke baare mein conflicting information hai. Kripya source documents verify karein.`, entitiesUsed: [String(entity._id)], factsUsed: facts.filter((fact) => fact.predicate === exactPredicate).map((fact) => String(fact._id)), relationshipsUsed: [], sources };
+    }
+    const values = factValues(exactPredicate);
+    if (values.length === 1) return { kind: 'answer', answer: `${entity.canonicalName} ka ${input.understanding.requestedField.replace('_', ' ')}:\n${values[0]}`, entitiesUsed: [String(entity._id)], factsUsed: facts.filter((fact) => fact.predicate === exactPredicate).map((fact) => String(fact._id)), relationshipsUsed: [], sources };
+    if (values.length > 1) return { kind: 'ambiguous', entitiesUsed: [String(entity._id)], factsUsed: [], relationshipsUsed: [], sources: [], candidates: values };
+  }
+  if (asksOwner) {
+    const owned = relationValues('OWNER_OF');
+    if (owned.length === 1) return { kind: 'answer', answer: `${entity.canonicalName} ${owned[0]} ke owner hain.`, entitiesUsed: [String(entity._id), ...targetIds], factsUsed: [], relationshipsUsed: outgoing.filter((item) => item.relationshipType === 'OWNER_OF').map((item) => String(item._id)), sources };
+  }
+  if (asksTechnology) {
+    const technologies = relationValues('USES_TECHNOLOGY');
+    if (technologies.length) return { kind: 'answer', answer: `${entity.canonicalName} ${naturalList(technologies)} par kaam karte hain.`, entitiesUsed: [String(entity._id), ...targetIds], factsUsed: [], relationshipsUsed: outgoing.filter((item) => item.relationshipType === 'USES_TECHNOLOGY').map((item) => String(item._id)), sources };
+  }
+  if (asksProject) {
+    const projects = unique([...relationValues('BUILT'), ...relationValues('WORKED_ON')]);
+    if (projects.length) return { kind: 'answer', answer: `${entity.canonicalName} ke projects: ${naturalList(projects)}.`, entitiesUsed: [String(entity._id), ...targetIds], factsUsed: [], relationshipsUsed: outgoing.filter((item) => ['BUILT', 'WORKED_ON'].includes(item.relationshipType)).map((item) => String(item._id)), sources };
+  }
+  if (broadIdentity) {
+    const profession = factValues('profession')[0] ?? factValues('role')[0];
+    const technologies = relationValues('USES_TECHNOLOGY');
+    const owned = relationValues('OWNER_OF');
+    if (profession || technologies.length || owned.length) {
+      let answer = profession ? `${entity.canonicalName} ek ${profession} hain` : `${entity.canonicalName} ke baare mein uploaded knowledge available hai`;
+      if (technologies.length) answer += ` jo ${naturalList(technologies)} par kaam karte hain.`; else answer += '.';
+      if (owned.length) answer += ` Ve ${naturalList(owned)} ke owner hain.`;
+      const conflicts = unique([
+        ...facts.filter((fact) => fact.isConflicting).map((fact) => fact.predicate),
+        ...outgoing.filter((relationship) => relationship.isConflicting).map((relationship) => relationship.relationshipType),
+      ]);
+      if (conflicts.length) answer += ` Uploaded knowledge mein ${naturalList(conflicts)} ke baare mein conflicting information hai; source documents check karein.`;
+      return { kind: 'answer', answer, entitiesUsed: [String(entity._id), ...targetIds], factsUsed: facts.filter((fact) => ['profession', 'role'].includes(fact.predicate)).map((fact) => String(fact._id)), relationshipsUsed: outgoing.map((item) => String(item._id)), sources };
+    }
+  }
+  return { kind: 'none', entitiesUsed: [String(entity._id)], factsUsed: [], relationshipsUsed: [], sources: [] };
+}

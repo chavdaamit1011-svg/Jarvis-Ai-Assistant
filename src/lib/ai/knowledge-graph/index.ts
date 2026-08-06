@@ -17,6 +17,8 @@ export { valuesConflict } from './fact-normalization';
 export { mergeRelationships } from './merge-relationships';
 export { detectConflicts } from './detect-conflicts';
 export { getEntityProfile } from './get-entity-profile';
+export { lookupKnowledgeGraph } from './chat-lookup';
+export type { GraphChatResult, GraphChatSource } from './chat-lookup';
 export { storeGraph } from './store-graph';
 export { processKnowledgeGraphChunk } from './process-chunk';
 export { getKnowledgeGraphRebuildStatus, KNOWLEDGE_GRAPH_VERSION, rebuildKnowledgeGraph } from './rebuild-graph';

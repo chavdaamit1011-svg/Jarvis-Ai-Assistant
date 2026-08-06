@@ -19,11 +19,14 @@ export interface KnowledgeSource {
   score: number;
 }
 
-export type AnswerSource = 'knowledge' | 'general-ai' | 'structured-data' | 'clarification' | 'web-search-required';
+export type AnswerSource = 'knowledge-graph' | 'knowledge' | 'general-ai' | 'structured-data' | 'clarification' | 'web-search-required';
 
 export interface AnswerMetadata {
   answerSource: AnswerSource;
   usedFallback: boolean;
+  entitiesUsed?: string[];
+  factsUsed?: string[];
+  relationshipsUsed?: string[];
 }
 
 /** Local, text-only representation compatible with this app's AI SDK text stream. */

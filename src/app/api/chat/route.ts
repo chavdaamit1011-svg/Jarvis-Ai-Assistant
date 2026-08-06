@@ -16,6 +16,7 @@ import { EXACT_VALUE_FIELDS, requiresCurrentInformation, routeAnswer, type Answe
 import { createReliableGroqTextStream } from '@/lib/ai/groq/reliable-stream';
 import { getEntityProfile } from '@/lib/ai/knowledge-index';
 import { buildClarification, detectAmbiguity } from '@/lib/ai/clarification';
+import { lookupKnowledgeGraph } from '@/lib/ai/knowledge-graph';
 
 export const runtime = 'nodejs';
 
@@ -35,7 +36,13 @@ const chatRequestSchema = z.object({
   answerStrategy: z.enum(['normal', 'knowledge_strict', 'knowledge_hybrid']).optional(),
 });
 
-type AnswerMetadata = { answerSource: 'knowledge' | 'general-ai' | 'structured-data' | 'clarification' | 'web-search-required'; usedFallback: boolean };
+type AnswerMetadata = {
+  answerSource: 'knowledge-graph' | 'knowledge' | 'general-ai' | 'structured-data' | 'clarification' | 'web-search-required';
+  usedFallback: boolean;
+  entitiesUsed?: string[];
+  factsUsed?: string[];
+  relationshipsUsed?: string[];
+};
 type Source = { documentTitle: string; chunkIndex: number; score: number };
 
 function answerHeaders(metadata: AnswerMetadata, sources: Source[] = []) {
@@ -51,10 +58,6 @@ function validateGenerationMessages(messages: Array<{ role: 'user' | 'assistant'
   const valid = messages.every((message) => (message.role === 'user' || message.role === 'assistant') && typeof message.content === 'string' && message.content.trim().length > 0);
   if (!valid) throw new Error('Invalid generation message payload.');
   return { messageCount: messages.length, contentLengths: messages.map((message) => message.content.length) };
-}
-
-function joinNatural(values: string[]) {
-  return values.length > 1 ? `${values.slice(0, -1).join(', ')} aur ${values.at(-1)}` : values[0] ?? '';
 }
 
 function jsonError(error: string, status: number) {
@@ -203,19 +206,32 @@ export async function POST(req: Request) {
               requestedField: understanding.requestedField === 'unknown' ? 'summary' : understanding.requestedField,
               confidence: Math.max(understanding.confidence, 0.9),
             };
-            if (entityProfile && understanding.requestedField === 'summary') {
-              const profession = entityProfile.facts.profession?.[0];
-              const technologies = entityProfile.facts.technologies ?? [];
-              const ownerOf = entityProfile.facts.ownerOf?.[0];
-              const sentences = [profession ? `${entityProfile.canonicalName} ek ${profession} hain` : `${entityProfile.canonicalName} ke baare mein uploaded knowledge mein profile information available hai`];
-              if (technologies.length) sentences[0] += ` jo ${joinNatural(technologies)} par kaam karte hain.`;
-              else sentences[0] += '.';
-              if (ownerOf) sentences.push(`Ve ${ownerOf} ke owner hain.`);
-              if (entityProfile.conflicts.length) sentences.push(`Uploaded sources mein ${entityProfile.conflicts.map((conflict) => conflict.field).join(', ')} ke baare mein conflicting information hai.`);
-              const profileSources: Source[] = entityResolution.resolved.documentTitles.map((documentTitle) => ({ documentTitle, chunkIndex: 0, score: 1 }));
-              if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] selected routing path: entity_profile', { entity: entityProfile.canonicalName, factFields: Object.keys(entityProfile.facts), conflicts: entityProfile.conflicts.length });
-              return new Response(sentences.join(' '), { headers: answerHeaders({ answerSource: 'knowledge', usedFallback: false }, profileSources) });
-            }
+          }
+          // Graph lookup is deliberately before legacy exact metadata and vector RAG.
+          // It returns only persisted graph facts/relationships, never generated values.
+          const graphResult = await lookupKnowledgeGraph({ query: latestQuestion, understanding });
+          if (process.env.NODE_ENV !== 'production') {
+            console.info('[API /api/chat] knowledge graph lookup', {
+              result: graphResult.kind,
+              entitiesUsed: graphResult.entitiesUsed.length,
+              factsUsed: graphResult.factsUsed.length,
+              relationshipsUsed: graphResult.relationshipsUsed.length,
+            });
+          }
+          if (graphResult.kind === 'ambiguous') {
+            const candidates = graphResult.candidates?.length ? ` ${graphResult.candidates.join(', ')} mein se kiski baat kar rahe hain?` : ' Kripya entity ko aur specific batayein.';
+            return new Response(`Need clarification:${candidates}`, { headers: answerHeaders({ answerSource: 'clarification', usedFallback: false }) });
+          }
+          if (graphResult.kind === 'answer' && graphResult.answer) {
+            const graphSources: Source[] = graphResult.sources.map(({ documentTitle, chunkIndex, score }) => ({ documentTitle, chunkIndex, score }));
+            return new Response(graphResult.answer, {
+              headers: answerHeaders({
+                answerSource: 'knowledge-graph', usedFallback: false,
+                entitiesUsed: graphResult.entitiesUsed,
+                factsUsed: graphResult.factsUsed,
+                relationshipsUsed: graphResult.relationshipsUsed,
+              }, graphSources),
+            });
           }
           const isExactLookup = understanding.intent === 'exact_value_lookup' && EXACT_VALUE_FIELDS.has(understanding.requestedField);
           if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] query understanding', { parsedIntent: understanding.intent, requestedField: understanding.requestedField, entityName: understanding.entityName, answerStrategy });
