@@ -1,4 +1,6 @@
-export type IndexedEntityType = 'person' | 'organization' | 'project' | 'product';
+import type { KnowledgeGraphEntityType } from '@/lib/ai/knowledge-graph';
+
+export type IndexedEntityType = KnowledgeGraphEntityType;
 
 export type EntityProfile = {
   id: string;
