@@ -19,14 +19,17 @@ export interface KnowledgeSource {
   score: number;
 }
 
-export type AnswerSource = 'knowledge-graph' | 'knowledge' | 'general-ai' | 'structured-data' | 'clarification' | 'web-search-required';
+export type AnswerSource = 'knowledge-graph' | 'rag' | 'general-ai' | 'structured-data' | 'clarification' | 'web-search-required';
 
 export interface AnswerMetadata {
   answerSource: AnswerSource;
   usedFallback: boolean;
+  confidence?: number;
+  evaluationDecision?: 'answer' | 'clarify' | 'fallback' | 'conflict' | 'insufficient';
   entitiesUsed?: string[];
   factsUsed?: string[];
   relationshipsUsed?: string[];
+  conflicts?: Array<{ field: string; values: unknown[] }>;
 }
 
 /** Local, text-only representation compatible with this app's AI SDK text stream. */

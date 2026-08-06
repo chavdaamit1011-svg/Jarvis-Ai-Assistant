@@ -96,6 +96,7 @@ export async function lookupStructuredValue(understanding: QueryUnderstanding) {
       documentTitle: selected.document.title,
       chunkId: sourceChunk ? String(sourceChunk._id) : null,
       chunkIndex: sourceChunk?.chunkIndex ?? 0,
+      supportingText: sourceChunk?.content ?? '',
     },
   };
 }
