@@ -1,0 +1,2 @@
+import type { BenchmarkReport } from './benchmark-types';
+export function summarizeBenchmark(report: BenchmarkReport) { return { overallScore: report.metrics.overallScore, hallucinationRate: report.metrics.hallucinationRate, accuracy: report.summary.total ? report.summary.passed / report.summary.total : 0, averageLatency: report.metrics.averageResponseTime, weakestCategory: report.metrics.weakestCategory, strongestCategory: report.metrics.strongestCategory }; }
