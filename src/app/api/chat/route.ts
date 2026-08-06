@@ -97,7 +97,7 @@ export async function POST(req: Request) {
   const latestUserQuestion = [...parsed.data.messages].reverse().find((message) => message.role === 'user')?.content;
   const requestedStrategy: AnswerStrategy = parsed.data.chatMode ?? parsed.data.answerStrategy ?? (parsed.data.knowledgeMode === 'off' ? 'normal' : 'knowledge_hybrid');
   if (latestUserQuestion) {
-    let capabilityEntity = { matches: [] as Array<{ type: string; name: string }>, ambiguous: false };
+    let capabilityEntity = { matches: [] as Array<{ type: string; name: string; id?:string }>, ambiguous: false };
     try { const resolved = await resolveKnowledgeEntities(latestUserQuestion); capabilityEntity = { matches: resolved.matches.map((match) => ({ type: match.type, name: match.name })), ambiguous: resolved.ambiguous }; } catch { /* Entity lookup failure must not block general chat. */ }
     const capability = await routeCapability(latestUserQuestion, { knowledgeMode: requestedStrategy, entityMatches: capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous });
     if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] capability router', { selectedCapability: capability.capability, confidence: capability.confidence, reasonCode: capability.reasonCode, detectedEntities: capability.entities, deterministic: !capability.fallbackUsed, fallbackUsed: capability.fallbackUsed ?? false });
