@@ -19,6 +19,7 @@ import { buildClarification, detectAmbiguity } from '@/lib/ai/clarification';
 import { lookupKnowledgeGraph } from '@/lib/ai/knowledge-graph';
 import { evaluateKnowledge } from '@/lib/ai/evaluation';
 import { routeCapability } from '@/lib/ai/brain';
+import { toolRegistry } from '@/lib/ai/tools';
 
 export const runtime = 'nodejs';
 
@@ -101,7 +102,14 @@ export async function POST(req: Request) {
     const capability = await routeCapability(latestUserQuestion, { knowledgeMode: requestedStrategy, entityMatches: capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous });
     if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] capability router', { selectedCapability: capability.capability, confidence: capability.confidence, reasonCode: capability.reasonCode, detectedEntities: capability.entities, deterministic: !capability.fallbackUsed, fallbackUsed: capability.fallbackUsed ?? false });
     if (capability.capability === 'clarification') return new Response(capability.clarificationQuestion ?? 'Kripya thoda aur specific batayein.', { headers: answerHeaders({ answerSource: 'clarification', usedFallback: false, confidence: capability.confidence, evaluationDecision: 'clarify' }) });
-    if (capability.capability === 'utility') return new Response('Utility capability is required for this request, but calculator execution is not implemented yet.', { headers: answerHeaders({ answerSource: 'general-ai', usedFallback: false, confidence: capability.confidence }) });
+    if (capability.capability === 'utility') {
+      const text=latestUserQuestion.toLowerCase(); const numbers=[...latestUserQuestion.matchAll(/\d+(?:\.\d+)?/g)].map(match=>Number(match[0]));
+      const input=text.includes('gst')?{action:'gst' as const,amount:numbers[0],percentage:numbers[1]}:text.includes('discount')?{action:'discount' as const,amount:numbers[0],percentage:numbers[1]}:text.includes('%')?{action:'percentage' as const,amount:numbers[0],percentage:numbers[1]}:text.includes('time')?{action:'current_time' as const,timezone:/india|kolkata/i.test(text)?'Asia/Kolkata':undefined}:text.includes('date')||/aaj|today/i.test(text)?{action:'current_date' as const,timezone:'Asia/Kolkata'}:{action:'calculate' as const,expression:latestUserQuestion.replace(/[^\d()+\-*/.]/g,'')};
+      const result=await toolRegistry.execute('utility',input,{capability:'utility',requestId:crypto.randomUUID(),signal:req.signal});
+      if(process.env.NODE_ENV!=='production')console.info('[API /api/chat] utility tool',{action:input.action,success:result.ok,durationMs:result.durationMs});
+      const output=result.ok?`${result.data.explanation}\n\nUtility Tool completed`:`Utility Tool failed: ${result.error.message}`;
+      return new Response(output,{headers:answerHeaders({answerSource:'general-ai',usedFallback:false,confidence:capability.confidence})});
+    }
     if (capability.capability === 'web_search') return new Response('Live Web Search capability is required but not implemented yet.', { headers: answerHeaders({ answerSource: 'web-search-required', usedFallback: false, confidence: capability.confidence }) });
     if (capability.capability === 'file') return new Response('File capability is planned. Please add the document to the Knowledge Base first.', { headers: answerHeaders({ answerSource: 'general-ai', usedFallback: false, confidence: capability.confidence }) });
     if (capability.capability === 'unsupported') return new Response('Knowledge Base me is question ke liye sufficient information available nahi hai.', { headers: answerHeaders({ answerSource: 'rag', usedFallback: false, confidence: capability.confidence, evaluationDecision: 'insufficient' }) });

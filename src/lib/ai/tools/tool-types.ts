@@ -1,0 +1,2 @@
+import type { z } from 'zod'; import type { ToolContext } from './tool-context'; import type { ToolResult } from './tool-result';
+export type ToolCategory = 'utility'; export type ToolDefinition<T extends z.ZodType = z.ZodType> = { name:string; description:string; category:ToolCategory; inputSchema:T; enabled:boolean; requiresConfirmation:boolean; timeoutMs:number; allowedCapabilities:string[]; execute:(input:z.infer<T>, context:ToolContext)=>Promise<ToolResult> };

@@ -1,0 +1,1 @@
+export type ToolResult = { ok:true; data:{ action:string; result:unknown; explanation:string; metadata:Record<string,unknown> }; durationMs:number } | { ok:false; error:{ code:string; message:string }; durationMs:number };
