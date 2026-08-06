@@ -19,6 +19,7 @@ export { detectConflicts } from './detect-conflicts';
 export { getEntityProfile } from './get-entity-profile';
 export { storeGraph } from './store-graph';
 export { processKnowledgeGraphChunk } from './process-chunk';
+export { getKnowledgeGraphRebuildStatus, KNOWLEDGE_GRAPH_VERSION, rebuildKnowledgeGraph } from './rebuild-graph';
 export { createTemporaryEntityId, normalizeAliases, normalizeEntityName } from './normalize-entity';
 export { graphExtractionSchema } from './graph-types';
 export type { GraphChunkInput, GraphEntityCandidate, GraphExtractionPayload, GraphFactCandidate, GraphProcessResult, GraphRelationshipCandidate } from './graph-types';

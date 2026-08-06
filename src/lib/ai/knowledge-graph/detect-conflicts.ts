@@ -8,8 +8,8 @@ const SINGLE_VALUE_PREDICATES = new Set(['role', 'profession', 'experience', 'ow
 
 export type GraphConflict = { predicate: string; values: unknown[]; factIds: string[] };
 
-export async function detectConflicts(entityId: string): Promise<GraphConflict[]> {
-  const facts = await KnowledgeFact.find({ entityId }).lean();
+export async function detectConflicts(entityId: string, graphVersion?: string): Promise<GraphConflict[]> {
+  const facts = await KnowledgeFact.find({ entityId, ...(graphVersion ? { graphVersion } : {}) }).lean();
   const groups = new Map<string, typeof facts>();
   for (const fact of facts) groups.set(fact.predicate, [...(groups.get(fact.predicate) ?? []), fact]);
   const conflicts: GraphConflict[] = [];

@@ -13,7 +13,7 @@ export type EntityResolutionResult = { outcome: EntityResolutionOutcome; entityI
 const PROFILE_PREDICATES = new Set<EntityIdentityEvidence['predicate']>(['email', 'linkedin_url', 'github_url', 'gitlab_url', 'instagram_url', 'x_url', 'youtube_url']);
 const reverseName = (value: string) => value.split(' ').filter(Boolean).reverse().join(' ');
 
-export async function resolveEntity(candidate: GraphEntityCandidate, options: { identityEvidence?: EntityIdentityEvidence[]; documentId: string; chunkId: string }): Promise<EntityResolutionResult> {
+export async function resolveEntity(candidate: GraphEntityCandidate, options: { identityEvidence?: EntityIdentityEvidence[]; documentId: string; chunkId: string; graphVersion?: string }): Promise<EntityResolutionResult> {
   const normalizedName = normalizeEntityName(candidate.name);
   const aliases = normalizeAliases(candidate.name, candidate.aliases).map(normalizeEntityName);
   const reversed = reverseName(normalizedName);
@@ -49,7 +49,7 @@ export async function resolveEntity(candidate: GraphEntityCandidate, options: { 
   }
 
   if (outcome === 'ambiguous' || outcome === 'conflicting') {
-    await KnowledgeEntityResolution.create({ entityType: candidate.entityType, incomingName: candidate.name, normalizedName, outcome, candidateEntityIds: candidateIds, documentId: options.documentId, chunkId: options.chunkId, reason });
+    await KnowledgeEntityResolution.create({ entityType: candidate.entityType, incomingName: candidate.name, normalizedName, graphVersion: options.graphVersion, outcome, candidateEntityIds: candidateIds, documentId: options.documentId, chunkId: options.chunkId, reason });
     if (process.env.NODE_ENV !== 'production') console.warn('[knowledge-graph] entity resolution needs review', { outcome, incomingName: candidate.name, candidateEntityIds: candidateIds });
   }
   return { outcome, entityId, candidateEntityIds: candidateIds, reason };

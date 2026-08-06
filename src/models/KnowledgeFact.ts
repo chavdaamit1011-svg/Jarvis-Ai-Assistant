@@ -16,6 +16,7 @@ const knowledgeFactSchema = new Schema({
   validFrom: { type: Date },
   validUntil: { type: Date },
   isConflicting: { type: Boolean, default: false, index: true },
+  graphVersion: { type: String, trim: true, maxlength: 40, index: true },
   // Legacy field used by the already-existing profile index. New graph callers
   // should use predicate; retaining this avoids changing chat or ingestion.
   field: { type: String, trim: true, maxlength: 100, index: true, default: 'legacy_fact' },
@@ -24,6 +25,7 @@ const knowledgeFactSchema = new Schema({
 knowledgeFactSchema.index({ entityId: 1, field: 1, normalizedValue: 1 });
 knowledgeFactSchema.index({ entityId: 1, predicate: 1 });
 knowledgeFactSchema.index({ relatedEntityId: 1 });
+knowledgeFactSchema.index({ graphVersion: 1, documentId: 1, chunkId: 1 });
 
 export type KnowledgeFactRecord = InferSchemaType<typeof knowledgeFactSchema>;
 export default (mongoose.models.KnowledgeFact as Model<KnowledgeFactRecord>) || mongoose.model<KnowledgeFactRecord>('KnowledgeFact', knowledgeFactSchema);

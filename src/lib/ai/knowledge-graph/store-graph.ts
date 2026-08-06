@@ -16,20 +16,24 @@ export async function storeGraph(input: GraphChunkInput, payload: GraphExtractio
   }
   await connectToDatabase();
   const entityIds: Record<string, string> = {};
+  let entitiesCreated = 0;
   for (const entity of payload.entities) {
     const identityEvidence: EntityIdentityEvidence[] = payload.facts.flatMap((fact) => {
       if (fact.subjectTemporaryId !== entity.temporaryId || typeof fact.value !== 'string' || !identityPredicates.has(fact.predicate as EntityIdentityEvidence['predicate'])) return [];
       return [{ predicate: fact.predicate as EntityIdentityEvidence['predicate'], value: fact.value }];
     });
-    const stored = await mergeEntity(entity, input, identityEvidence);
-    entityIds[entity.temporaryId] = String(stored._id);
+    const merged = await mergeEntity(entity, input, identityEvidence);
+    entityIds[entity.temporaryId] = String(merged.entity._id);
+    if (merged.created) entitiesCreated += 1;
   }
 
   let persistedFactCount = 0;
+  const conflictKeys = new Set<string>();
   for (const [temporaryId, entityId] of Object.entries(entityIds)) {
     const merged = await mergeFacts(entityId, payload.facts.filter((fact) => fact.subjectTemporaryId === temporaryId), input);
     persistedFactCount += merged.persistedFactCount;
+    for (const conflict of merged.conflicts) conflictKeys.add(`${entityId}:${conflict.predicate}`);
   }
   const { persistedRelationshipCount } = await mergeRelationships(entityIds, payload.relationships, input);
-  return { persistedEntityIds: entityIds, persistedFactCount, persistedRelationshipCount };
+  return { persistedEntityIds: entityIds, entitiesCreated, persistedFactCount, persistedRelationshipCount, conflictsFound: conflictKeys.size };
 }

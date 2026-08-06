@@ -35,12 +35,15 @@ export type GraphChunkInput = {
   documentId: string;
   chunkId: string;
   content: string;
+  graphVersion?: string;
 };
 
 export type GraphProcessResult = GraphExtractionPayload & {
   persistedEntityIds: Record<string, string>;
+  entitiesCreated: number;
   persistedFactCount: number;
   persistedRelationshipCount: number;
+  conflictsFound: number;
   aiExtractionFailed: boolean;
   warnings: string[];
 };

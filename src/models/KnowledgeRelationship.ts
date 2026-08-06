@@ -9,11 +9,13 @@ const knowledgeRelationshipSchema = new Schema({
   chunkId: { type: Schema.Types.ObjectId, ref: 'KnowledgeChunk', required: true, index: true },
   sourceText: { type: String, required: true, maxlength: 1_500 },
   isConflicting: { type: Boolean, default: false, index: true },
+  graphVersion: { type: String, trim: true, maxlength: 40, index: true },
 }, { timestamps: true, versionKey: false });
 
 knowledgeRelationshipSchema.index({ sourceEntityId: 1, relationshipType: 1 });
 knowledgeRelationshipSchema.index({ targetEntityId: 1 });
 knowledgeRelationshipSchema.index({ relationshipType: 1 });
+knowledgeRelationshipSchema.index({ graphVersion: 1, documentId: 1, chunkId: 1 });
 
 export type KnowledgeRelationshipRecord = InferSchemaType<typeof knowledgeRelationshipSchema>;
 

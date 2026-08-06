@@ -13,11 +13,11 @@ export async function mergeFacts(entityId: string, facts: GraphFactCandidate[], 
     const normalizedValue = normalizeGraphFactValue(fact.value);
     await KnowledgeFact.findOneAndUpdate(
       { entityId, predicate: fact.predicate, normalizedValue, documentId: source.documentId, chunkId: source.chunkId },
-      { $setOnInsert: { entityId, predicate: fact.predicate, field: fact.predicate, valueType: fact.valueType, value: fact.value, normalizedValue, confidence: fact.confidence, documentId: source.documentId, chunkId: source.chunkId, sourceText: fact.supportingText, isConflicting: false } },
+      { $setOnInsert: { entityId, predicate: fact.predicate, field: fact.predicate, valueType: fact.valueType, value: fact.value, normalizedValue, confidence: fact.confidence, documentId: source.documentId, chunkId: source.chunkId, sourceText: fact.supportingText, isConflicting: false, graphVersion: source.graphVersion } },
       { upsert: true, new: false, setDefaultsOnInsert: true },
     );
     persistedFactCount += 1;
   }
-  const conflicts = await detectConflicts(entityId);
+  const conflicts = await detectConflicts(entityId, source.graphVersion);
   return { persistedFactCount, conflicts };
 }

@@ -1,22 +1,23 @@
 import 'server-only';
 
 import KnowledgeEntity from '@/models/KnowledgeEntity';
-import type { GraphEntityCandidate } from './graph-types';
+import type { GraphChunkInput, GraphEntityCandidate } from './graph-types';
 import { normalizeAliases, normalizeEntityName } from './normalize-entity';
 import { resolveEntity, type EntityIdentityEvidence } from './resolve-entity';
 
-export async function mergeEntity(candidate: GraphEntityCandidate, source: { documentId: string; chunkId: string }, identityEvidence: EntityIdentityEvidence[] = []) {
+export async function mergeEntity(candidate: GraphEntityCandidate, source: GraphChunkInput, identityEvidence: EntityIdentityEvidence[] = []) {
   const normalizedName = normalizeEntityName(candidate.name);
   const aliases = normalizeAliases(candidate.name, candidate.aliases);
   const resolution = await resolveEntity(candidate, { identityEvidence, ...source });
   if (resolution.outcome === 'matched' && resolution.entityId) {
-    return KnowledgeEntity.findByIdAndUpdate(
+    const entity = await KnowledgeEntity.findByIdAndUpdate(
       resolution.entityId,
       { $addToSet: { aliases: { $each: aliases }, sourceDocumentIds: source.documentId, sourceChunkIds: source.chunkId } },
       { new: true },
     ).orFail();
+    return { entity, created: false };
   }
-  return KnowledgeEntity.findOneAndUpdate(
+  const entity = await KnowledgeEntity.findOneAndUpdate(
     { entityType: candidate.entityType, normalizedName },
     {
       $setOnInsert: {
@@ -34,4 +35,5 @@ export async function mergeEntity(candidate: GraphEntityCandidate, source: { doc
     },
     { upsert: true, new: true, setDefaultsOnInsert: true },
   );
+  return { entity, created: resolution.outcome === 'new_entity' };
 }

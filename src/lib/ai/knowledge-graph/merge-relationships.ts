@@ -11,7 +11,7 @@ export async function mergeRelationships(entityIds: Record<string, string>, rela
     if (!sourceEntityId || !targetEntityId) continue;
     await KnowledgeRelationship.findOneAndUpdate(
       { sourceEntityId, relationshipType: relationship.relationshipType, targetEntityId, documentId: source.documentId, chunkId: source.chunkId },
-      { $setOnInsert: { sourceEntityId, relationshipType: relationship.relationshipType, targetEntityId, confidence: relationship.confidence, documentId: source.documentId, chunkId: source.chunkId, sourceText: relationship.supportingText, isConflicting: false } },
+      { $setOnInsert: { sourceEntityId, relationshipType: relationship.relationshipType, targetEntityId, confidence: relationship.confidence, documentId: source.documentId, chunkId: source.chunkId, sourceText: relationship.supportingText, isConflicting: false, graphVersion: source.graphVersion } },
       { upsert: true, new: false, setDefaultsOnInsert: true },
     );
     persistedRelationshipCount += 1;
