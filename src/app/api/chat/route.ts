@@ -18,8 +18,9 @@ import { getEntityProfile } from '@/lib/ai/knowledge-index';
 import { buildClarification, detectAmbiguity } from '@/lib/ai/clarification';
 import { lookupKnowledgeGraph } from '@/lib/ai/knowledge-graph';
 import { evaluateKnowledge } from '@/lib/ai/evaluation';
-import { routeCapability } from '@/lib/ai/brain';
+import { routeCapability, resolveEntityBeforeRouting } from '@/lib/ai/brain';
 import { toolRegistry } from '@/lib/ai/tools';
+import { createTrace } from '@/lib/ai/trace';
 
 export const runtime = 'nodejs';
 
@@ -95,11 +96,14 @@ export async function POST(req: Request) {
   }
 
   const latestUserQuestion = [...parsed.data.messages].reverse().find((message) => message.role === 'user')?.content;
+  const traceSession = latestUserQuestion && process.env.NODE_ENV !== 'production' ? createTrace(latestUserQuestion) : null;
+  if (traceSession) await traceSession.update({ queryUnderstanding: { normalizedQuery: latestUserQuestion?.toLowerCase().trim(), intent: 'pending', entities: [], requestedFields: [], ambiguityDetected: false } });
   const requestedStrategy: AnswerStrategy = parsed.data.chatMode ?? parsed.data.answerStrategy ?? (parsed.data.knowledgeMode === 'off' ? 'normal' : 'knowledge_hybrid');
   if (latestUserQuestion) {
     let capabilityEntity = { matches: [] as Array<{ type: string; name: string; id?:string }>, ambiguous: false };
-    try { const resolved = await resolveKnowledgeEntities(latestUserQuestion); capabilityEntity = { matches: resolved.matches.map((match) => ({ type: match.type, name: match.name })), ambiguous: resolved.ambiguous }; } catch { /* Entity lookup failure must not block general chat. */ }
+    try { const preResolved=await resolveEntityBeforeRouting(latestUserQuestion); capabilityEntity={matches:preResolved.matches.map(match=>({type:match.type,name:match.name,id:match.id})),ambiguous:preResolved.route==='clarification'}; if(process.env.NODE_ENV!=='production')console.info('[API /api/chat] pre-routing entity resolution',{entity:preResolved.entity,entityId:preResolved.entityId,confidence:preResolved.confidence,route:preResolved.route,reason:preResolved.reason}); } catch { /* Entity lookup failure must not block general chat. */ }
     const capability = await routeCapability(latestUserQuestion, { knowledgeMode: requestedStrategy, entityMatches: capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous });
+    if(traceSession)await traceSession.update({routing:{capability:capability.capability,reasonCode:capability.reasonCode,confidence:capability.confidence,deterministicOrAI:capability.fallbackUsed?'fallback':'deterministic'},entityResolution:{candidates:capabilityEntity.matches,selectedEntity:capability.matchedEntity,matchType:capability.entityMatchType,confidence:capability.confidence}});
     if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] capability router', { selectedCapability: capability.capability, confidence: capability.confidence, reasonCode: capability.reasonCode, detectedEntities: capability.entities, deterministic: !capability.fallbackUsed, fallbackUsed: capability.fallbackUsed ?? false });
     if (capability.capability === 'clarification') return new Response(capability.clarificationQuestion ?? 'Kripya thoda aur specific batayein.', { headers: answerHeaders({ answerSource: 'clarification', usedFallback: false, confidence: capability.confidence, evaluationDecision: 'clarify' }) });
     if (capability.capability === 'utility') {
