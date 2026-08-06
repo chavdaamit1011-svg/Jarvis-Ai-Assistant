@@ -49,6 +49,7 @@ type AnswerMetadata = {
   factsUsed?: string[];
   relationshipsUsed?: string[];
   conflicts?: Array<{ field: string; values: unknown[] }>;
+  traceId?: string;
 };
 type Source = { documentTitle: string; chunkIndex: number; score: number };
 
@@ -99,9 +100,10 @@ export async function POST(req: Request) {
   const traceSession = latestUserQuestion && process.env.NODE_ENV !== 'production' ? createTrace(latestUserQuestion) : null;
   if (traceSession) await traceSession.update({ queryUnderstanding: { normalizedQuery: latestUserQuestion?.toLowerCase().trim(), intent: 'pending', entities: [], requestedFields: [], ambiguityDetected: false } });
   const requestedStrategy: AnswerStrategy = parsed.data.chatMode ?? parsed.data.answerStrategy ?? (parsed.data.knowledgeMode === 'off' ? 'normal' : 'knowledge_hybrid');
+  let preRoutingEntity: Awaited<ReturnType<typeof resolveEntityBeforeRouting>> | null = null;
   if (latestUserQuestion) {
     let capabilityEntity = { matches: [] as Array<{ type: string; name: string; id?:string }>, ambiguous: false };
-    try { const preResolved=await resolveEntityBeforeRouting(latestUserQuestion); capabilityEntity={matches:preResolved.matches.map(match=>({type:match.type,name:match.name,id:match.id})),ambiguous:preResolved.route==='clarification'}; if(process.env.NODE_ENV!=='production')console.info('[API /api/chat] pre-routing entity resolution',{entity:preResolved.entity,entityId:preResolved.entityId,confidence:preResolved.confidence,route:preResolved.route,reason:preResolved.reason}); } catch { /* Entity lookup failure must not block general chat. */ }
+    try { const preResolved=await resolveEntityBeforeRouting(latestUserQuestion); preRoutingEntity=preResolved; capabilityEntity={matches:preResolved.matches.map(match=>({type:match.type,name:match.name,id:match.id})),ambiguous:preResolved.route==='clarification'}; if(process.env.NODE_ENV!=='production')console.info('[API /api/chat] pre-routing entity resolution',{entityCandidates:preResolved.matches,selectedEntity:preResolved.entity,candidateCount:preResolved.matches.length,autoSelected:preResolved.route==='knowledge',clarificationNeeded:preResolved.route==='clarification',reason:preResolved.reason}); } catch { /* Entity lookup failure must not block general chat. */ }
     const capability = await routeCapability(latestUserQuestion, { knowledgeMode: requestedStrategy, entityMatches: capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous });
     if(traceSession)await traceSession.update({routing:{capability:capability.capability,reasonCode:capability.reasonCode,confidence:capability.confidence,deterministicOrAI:capability.fallbackUsed?'fallback':'deterministic'},entityResolution:{candidates:capabilityEntity.matches,selectedEntity:capability.matchedEntity,matchType:capability.entityMatchType,confidence:capability.confidence}});
     if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] capability router', { selectedCapability: capability.capability, confidence: capability.confidence, reasonCode: capability.reasonCode, detectedEntities: capability.entities, deterministic: !capability.fallbackUsed, fallbackUsed: capability.fallbackUsed ?? false });
@@ -142,6 +144,10 @@ export async function POST(req: Request) {
           const latestQuestion = messages[lastUserIndex].content;
           let understanding = parseQueryDeterministically(latestQuestion);
           let entityResolution = await resolveKnowledgeEntities(latestQuestion);
+          if (preRoutingEntity?.route === 'knowledge' && preRoutingEntity.entity && preRoutingEntity.matches.length === 1) {
+            const selected = preRoutingEntity.matches[0];
+            entityResolution = { detectedPhrase: preRoutingEntity.entity, matches: [{ type: selected.type as 'person' | 'organization' | 'project', name: selected.name, documentIds: [], documentTitles: [] }], resolved: { type: selected.type as 'person' | 'organization' | 'project', name: selected.name, documentIds: [], documentTitles: [] }, ambiguous: false };
+          }
           const hasContextReference = /\b(?:uska|uski|uske|unki|unka|iska|iski|iske|vo|woh|his|her|their)\b/i.test(latestQuestion);
           if (!entityResolution.resolved && !entityResolution.ambiguous && hasContextReference) {
             for (let index = lastUserIndex - 1; index >= 0; index -= 1) {
@@ -450,6 +456,7 @@ export async function POST(req: Request) {
       },
     });
 
+    if (traceSession) { answerMetadata.traceId = traceSession.trace.traceId; await traceSession.complete({ generation: { provider: 'groq', model: DEFAULT_MODEL_ID, answerSource: answerMetadata.answerSource, fallbackUsed: answerMetadata.usedFallback } }); }
     return new Response(stream, { headers: answerHeaders(answerMetadata, sources) });
   } catch (error: unknown) {
     const status = error instanceof Error && /rate limit|status code: 429/i.test(error.message) ? 429 : 502;

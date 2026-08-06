@@ -41,6 +41,7 @@ export interface Message {
   status: MessageStatus;
   error?: MessageError;
   model?: AIModelId;
+  traceId?: string;
   isEdited?: boolean;
   likeStatus?: 'liked' | 'disliked' | null;
   sources?: KnowledgeSource[];

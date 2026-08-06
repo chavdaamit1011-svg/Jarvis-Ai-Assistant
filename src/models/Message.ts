@@ -6,6 +6,7 @@ const messageSchema = new Schema({
   content: { type: String, required: true, maxlength: 8000 },
   status: { type: String, enum: ['pending', 'streaming', 'completed', 'stopped', 'error'], required: true, default: 'completed' },
   errorMessage: { type: String, maxlength: 1000 },
+  traceId: { type: String, index: true, maxlength: 100 },
 }, { timestamps: true, versionKey: false });
 messageSchema.index({ conversationId: 1, createdAt: 1 });
 
