@@ -42,6 +42,8 @@ export function ChatItem({ message }: ChatItemProps) {
   const [editContent, setEditContent] = useState(message.content);
 
   const isUser = message.role === 'user';
+  const traceId = message.traceId ?? message.answerMetadata?.traceId;
+  const canViewDebug = !isUser && Boolean(traceId) && process.env.NODE_ENV !== 'production';
 
   const handleCopy = () => {
     navigator.clipboard.writeText(message.content);
@@ -214,7 +216,7 @@ export function ChatItem({ message }: ChatItemProps) {
                   <RefreshCw size={14} />
                 </button>
 
-                {process.env.NODE_ENV !== 'production' && (
+                {canViewDebug && (
                   <button
                     onClick={() => setIsDebugOpen(true)}
                     className="flex items-center gap-1 rounded-md px-1.5 py-1 text-[var(--text-muted)] hover:bg-[var(--bg-tertiary)] hover:text-[var(--accent-cyan)] transition-colors"
@@ -255,7 +257,7 @@ export function ChatItem({ message }: ChatItemProps) {
           </div>
         )}
       </div>
-      {!isUser && process.env.NODE_ENV !== 'production' && <DebugTraceDrawer traceId={message.traceId ?? message.answerMetadata?.traceId} open={isDebugOpen} onClose={() => setIsDebugOpen(false)} />}
+      {canViewDebug && traceId && <DebugTraceDrawer traceId={traceId} open={isDebugOpen} onClose={() => setIsDebugOpen(false)} />}
     </div>
   );
 }

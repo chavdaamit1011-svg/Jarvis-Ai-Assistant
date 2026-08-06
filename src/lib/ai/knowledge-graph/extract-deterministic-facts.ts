@@ -87,6 +87,33 @@ export function extractDeterministicFacts(content: string): GraphExtractionPaylo
   const pronounOwner = /\b(?:he|she|they)\s+(?:is\s+)?(?:an?\s+)?owner\s+of\s+([A-Z][\p{L}\d ._-]{1,100})/giu;
   if (primaryPerson) for (const match of content.matchAll(pronounOwner)) addRelationship(primaryPerson, GRAPH_RELATIONSHIPS.ownerOf, addEntity('product', match[1]), 0.93, match[0]);
 
+  // Resume/project-section blocks stay in their original chunk, while each
+  // explicitly named block also becomes a graph project with source evidence.
+  // Nothing is inferred from a skill list or a technology mention alone.
+  let inProjectSection = false;
+  for (let index = 0; index < lines.length; index += 1) {
+    const line = lines[index];
+    if (/^(?:project(?:\s+work)?|projects|portfolio projects)$/i.test(line)) { inProjectSection = true; continue; }
+    if (/^[A-Z][A-Z\s&]{4,}$/.test(line) && !/^(?:PROJECT(?:\s+WORK)?|PROJECTS)$/i.test(line)) inProjectSection = false;
+    if (!inProjectSection || !primaryPerson) continue;
+    const projectMatch = line.match(/^(?:project\s*:\s*)?((?:e-?commerce\s*\([^)]{2,80}\))|(?:[A-Z][\w.-]*(?:\s+[A-Z][\w.-]*){0,5}))$/i);
+    const projectName = projectMatch?.[1]?.trim();
+    if (!projectName || /^(?:project work|projects?)$/i.test(projectName)) continue;
+    const details = lines.slice(index + 1, index + 8).filter((value) => !/^(?:project\s*:\s*)?((?:e-?commerce\s*\([^)]{2,80}\))|(?:[A-Z][\w.-]*(?:\s+[A-Z][\w.-]*){0,5}))$/i.test(value));
+    const supportingText = [line, ...details].join('\n');
+    const projectId = addEntity('project', projectName);
+    addRelationship(primaryPerson, GRAPH_RELATIONSHIPS.workedOn, projectId, 0.98, supportingText);
+    const category = projectName.match(/^([^(]+)\(/)?.[1]?.trim();
+    if (category) addFact(projectId, 'category', category, 'string', 0.98, line);
+    const description = details.find((value) => !URL_PATTERN.test(value));
+    if (description) addFact(projectId, 'description', description, 'string', 0.96, supportingText);
+    const url = supportingText.match(URL_PATTERN)?.[0];
+    if (url) addFact(projectId, 'project_url', cleanValue(url), 'url', 0.99, supportingText);
+    for (const [pattern, technology] of CANONICAL_TECHNOLOGY_ALIASES) {
+      if (pattern.test(supportingText)) addRelationship(projectId, GRAPH_RELATIONSHIPS.usesTechnology, addEntity('technology', technology), 0.94, supportingText);
+    }
+  }
+
   // Generic, explicitly worded employment relation. The subject and company
   // must both appear in the same sentence; no names or company lists are used.
   const employmentPattern = /\b([A-Z][\p{L}'-]+(?:\s+[A-Z][\p{L}'-]+){1,2})\s+is\s+(?:an?\s+)?([A-Za-z][A-Za-z\s-]{2,60}?)\s+at\s+([A-Z][\p{L}\d& ._-]{1,100})/giu;

@@ -6,7 +6,7 @@ import { AlertCircle, ChevronDown, ChevronUp, Loader2, X } from 'lucide-react';
 type Trace = Record<string, unknown>;
 
 type DebugTraceDrawerProps = {
-  traceId?: string;
+  traceId: string;
   open: boolean;
   onClose: () => void;
 };
@@ -56,21 +56,22 @@ export function DebugTraceDrawer({ traceId, open, onClose }: DebugTraceDrawerPro
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (!open || !traceId) return;
+    if (!open) return;
 
     let active = true;
     void Promise.resolve().then(() => {
       if (active) setLoading(true);
     });
-    void fetch('/api/admin/ai-traces', { cache: 'no-store' })
+    void fetch(`/api/ai-traces/${encodeURIComponent(traceId)}`, { cache: 'no-store' })
       .then(async (response) => {
-        if (!response.ok) throw new Error('Debug traces are unavailable.');
-        const payload = await response.json() as { traces?: Trace[] };
-        return (payload.traces ?? []).find((item) => item.traceId === traceId) ?? null;
+        if (response.status === 404) return null;
+        if (!response.ok) throw new Error('Debug trace request failed.');
+        const payload = await response.json() as { trace?: Trace };
+        return payload.trace ?? null;
       })
       .then((found) => {
         if (!active) return;
-        if (!found) setError('The related trace has expired or is no longer available.');
+        if (!found) setError('Debug trace was not found for this response.');
         else setTrace(found);
       })
       .catch(() => {
@@ -88,7 +89,7 @@ export function DebugTraceDrawer({ traceId, open, onClose }: DebugTraceDrawerPro
   return (
     <div className="fixed inset-0 z-[80]" role="dialog" aria-modal="true" aria-label="AI debug trace">
       <button type="button" className="absolute inset-0 bg-slate-950/40" aria-label="Close debug drawer" onClick={onClose} />
-      <aside className="absolute inset-y-0 right-0 flex w-full max-w-xl flex-col border-l border-[var(--border-color)] bg-[var(--bg-secondary)] shadow-2xl">
+      <aside className="absolute left-1/2 top-1/2 flex max-h-[86vh] w-[calc(100%-2rem)] max-w-2xl -translate-x-1/2 -translate-y-1/2 flex-col rounded-2xl border border-[var(--border-color)] bg-[var(--bg-secondary)] shadow-2xl">
         <header className="flex items-start justify-between gap-4 border-b border-[var(--border-color)] px-5 py-4">
           <div>
             <p className="font-mono text-xs text-[var(--accent-cyan)]">DEVELOPMENT ONLY</p>
@@ -102,7 +103,6 @@ export function DebugTraceDrawer({ traceId, open, onClose }: DebugTraceDrawerPro
 
         <div className="flex-1 space-y-3 overflow-y-auto p-5">
           {loading && traceId && <div className="flex items-center gap-2 text-sm text-[var(--text-secondary)]"><Loader2 size={16} className="animate-spin" /> Loading trace…</div>}
-          {!traceId && <div className="flex gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-700 dark:text-amber-300"><AlertCircle size={17} className="mt-0.5 shrink-0" />This older response does not have a debug trace attached.</div>}
           {traceId && error && <div className="flex gap-2 rounded-xl border border-amber-400/30 bg-amber-400/10 p-3 text-sm text-amber-700 dark:text-amber-300"><AlertCircle size={17} className="mt-0.5 shrink-0" />{error}</div>}
           {trace && <>
             <section className="rounded-xl border border-[var(--border-color)] bg-[var(--bg-primary)]/45 p-3">

@@ -41,3 +41,13 @@ test('extracts unseen people, organizations, projects, and explicit relationship
   assert.ok(result.relationships.some((relationship) => relationship.relationshipType === 'WORKS_AT'));
   assert.ok(result.relationships.some((relationship) => relationship.relationshipType === 'CREATED'));
 });
+
+test('extracts resume project blocks with evidence and project technology relationships', () => {
+  const result = extractDeterministicFacts('Name: Neel Desai\nPROJECT WORK\nOrbitPay\nCreated a payment application using Flutter and Firebase.\nhttps://orbitpay.example/');
+  const person = result.entities.find((entity) => entity.entityType === 'person' && entity.name === 'Neel Desai');
+  const project = result.entities.find((entity) => entity.entityType === 'project' && entity.name === 'OrbitPay');
+  assert.ok(person);
+  assert.ok(project);
+  assert.ok(result.relationships.some((relationship) => relationship.sourceTemporaryId === person?.temporaryId && relationship.targetTemporaryId === project?.temporaryId && relationship.relationshipType === 'WORKED_ON'));
+  assert.ok(result.facts.some((fact) => fact.subjectTemporaryId === project?.temporaryId && fact.predicate === 'project_url' && fact.value === 'https://orbitpay.example/'));
+});
