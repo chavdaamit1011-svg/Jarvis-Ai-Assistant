@@ -59,6 +59,9 @@ export interface Conversation {
   assistantMode: AssistantMode;
   isPinned: boolean;
   isArchived: boolean;
+  activeEntityId?: string | null;
+  activeEntityName?: string | null;
+  activeEntityType?: string | null;
 }
 
 /** @deprecated Use Conversation. Kept as an alias while existing UI components migrate. */

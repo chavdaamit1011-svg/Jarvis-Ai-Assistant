@@ -6,6 +6,9 @@ const conversationSchema = new Schema({
   assistantMode: { type: String, required: true, default: 'general' },
   isPinned: { type: Boolean, default: false },
   isArchived: { type: Boolean, default: false },
+  activeEntityId: { type: String, default: null },
+  activeEntityName: { type: String, default: null, maxlength: 180 },
+  activeEntityType: { type: String, default: null, maxlength: 50 },
 }, { timestamps: true, versionKey: false });
 conversationSchema.index({ updatedAt: -1 });
 conversationSchema.index({ isPinned: -1, updatedAt: -1 });

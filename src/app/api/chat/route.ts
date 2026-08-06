@@ -24,6 +24,9 @@ import { toolRegistry } from '@/lib/ai/tools';
 import { createTrace } from '@/lib/ai/trace';
 import { runShadowComparison, type ShadowComparison } from '@/lib/ai/brain/shadow-mode';
 import { compareEvidencePipeline } from '@/lib/ai/brain/pipeline';
+import { conversationEntityManager, type ActiveConversationEntity } from '@/lib/ai/brain/conversation-entity-manager';
+import Conversation from '@/models/Conversation';
+import mongoose from 'mongoose';
 
 export const runtime = 'nodejs';
 
@@ -41,6 +44,7 @@ const chatRequestSchema = z.object({
   knowledgeMode: z.enum(['off', 'public', 'private']).optional().default('public'),
   chatMode: z.enum(['normal', 'knowledge_strict', 'knowledge_hybrid']).optional(),
   answerStrategy: z.enum(['normal', 'knowledge_strict', 'knowledge_hybrid']).optional(),
+  conversationId: z.string().optional(),
 });
 
 type AnswerMetadata = {
@@ -100,6 +104,21 @@ export async function POST(req: Request) {
   }
 
   const latestUserQuestion = [...parsed.data.messages].reverse().find((message) => message.role === 'user')?.content;
+  let contextResolvedQuery = latestUserQuestion ?? '';
+  let activeEntityBefore: ActiveConversationEntity | null = null;
+  let activeEntityAfter: ActiveConversationEntity | null = null;
+  let referenceResolution: ReturnType<typeof conversationEntityManager.resolvePronouns> | null = null;
+  if (process.env.AI_BRAIN_SHADOW_MODE === 'true' && latestUserQuestion && parsed.data.conversationId && mongoose.isValidObjectId(parsed.data.conversationId)) {
+    try {
+      const stored = await Conversation.findById(parsed.data.conversationId).select('activeEntityId activeEntityName activeEntityType').lean();
+      if (stored?.activeEntityName && stored.activeEntityType) conversationEntityManager.setActiveEntity(parsed.data.conversationId, { id: stored.activeEntityId ?? undefined, name: stored.activeEntityName, type: stored.activeEntityType as typeof activeEntityBefore extends null ? never : NonNullable<typeof activeEntityBefore>['type'] });
+      activeEntityBefore = conversationEntityManager.getActiveEntity(parsed.data.conversationId);
+      referenceResolution = conversationEntityManager.resolvePronouns(parsed.data.conversationId, latestUserQuestion);
+      if (referenceResolution.resolved) contextResolvedQuery = referenceResolution.resolvedQuery;
+    } catch {
+      // Context metadata never blocks the existing chat request.
+    }
+  }
   const language = detectResponseLanguage(latestUserQuestion ?? '');
   const shadowModeEnabled = process.env.AI_BRAIN_SHADOW_MODE === 'true';
   let shadowComparison: Promise<ShadowComparison> | null = null;
@@ -120,7 +139,7 @@ export async function POST(req: Request) {
           const timeline = ['planner', 'executor'];
           if (shadow.pipeline.status === 'success' || shadow.pipeline.status === 'rejected') timeline.push('evidence_builder', 'answer_composer', 'answer_validator');
           timeline.push('comparison');
-          return traceSession.update({ shadowModeEnabled: true, oldRoutingResult: oldFlow, newPlannerResult: { capability: shadow.newBrain.capability, operation: shadow.newBrain.operation, entities: shadow.newBrain.entities, requestedFields: shadow.newBrain.requestedFields, rawQuery: shadow.normalizer.rawQuery, cleanedQuery: shadow.normalizer.cleanedQuery, normalizedMeaning: shadow.normalizer.normalizedMeaning, detectedLanguage: shadow.normalizer.detectedLanguage, responseLanguage: shadow.normalizer.responseLanguage, corrections: shadow.normalizer.corrections, normalizerMethod: shadow.normalizer.normalizerMethod, normalizerConfidence: shadow.normalizer.confidence, normalizerFallbackUsed: shadow.normalizer.fallbackUsed }, newExecutorResult: { status: shadow.newBrain.executorStatus, answerSource: shadow.newBrain.answerSource, fallbackAllowed: shadow.newBrain.fallbackAllowed }, routingDifferences: comparison, pipelineComparison, pipelineTimeline: timeline, comparisonStatus: pipelineComparison.overallStatus === 'shadow_failed' ? 'error' : comparison.overallMatch ? 'match' : 'mismatch' });
+          return traceSession.update({ shadowModeEnabled: true, oldRoutingResult: oldFlow, newPlannerResult: { capability: shadow.newBrain.capability, operation: shadow.newBrain.operation, entities: shadow.newBrain.entities, requestedFields: shadow.newBrain.requestedFields, plannerCandidates: shadow.newBrain.plannerCandidates, winner: shadow.newBrain.capability, confidence: shadow.newBrain.confidence, reasons: shadow.newBrain.plannerReasons, rawQuery: shadow.normalizer.rawQuery, cleanedQuery: shadow.normalizer.cleanedQuery, normalizedMeaning: shadow.normalizer.normalizedMeaning, detectedLanguage: shadow.normalizer.detectedLanguage, responseLanguage: shadow.normalizer.responseLanguage, corrections: shadow.normalizer.corrections, normalizerMethod: shadow.normalizer.normalizerMethod, normalizerConfidence: shadow.normalizer.confidence, normalizerFallbackUsed: shadow.normalizer.fallbackUsed }, contextResolution: { ...shadow.context, originalQuery: latestUserQuestion, activeEntityBefore, referenceDetected: Boolean(referenceResolution && referenceResolution.reason !== 'no_reference'), resolvedReference: referenceResolution?.entity?.name ?? null, resolvedQuery: contextResolvedQuery, activeEntityAfter, contextConfidence: referenceResolution?.resolved ? 0.94 : shadow.context.contextConfidence }, newExecutorResult: { status: shadow.newBrain.executorStatus, answerSource: shadow.newBrain.answerSource, fallbackAllowed: shadow.newBrain.fallbackAllowed }, routingDifferences: comparison, pipelineComparison, pipelineTimeline: timeline, comparisonStatus: pipelineComparison.overallStatus === 'shadow_failed' || shadow.context.failed ? 'error' : comparison.overallMatch ? 'match' : 'mismatch' });
         }).then(() => {
           if (process.env.NODE_ENV !== 'production') console.info('[AI Brain shadow]', { oldCapability: 'recorded', match: 'recorded' });
         }).catch((error: unknown) => {
@@ -182,13 +201,19 @@ export async function POST(req: Request) {
           reason: preRoutingEntity.reason,
         });
       }
+      if (process.env.AI_BRAIN_SHADOW_MODE === 'true' && parsed.data.conversationId && preRoutingEntity.route === 'knowledge' && preRoutingEntity.entity) {
+        const entity = conversationEntityManager.setActiveEntity(parsed.data.conversationId, { id: preRoutingEntity.entityId ?? undefined, name: preRoutingEntity.entity, type: capabilityEntity.matches[0]?.type === 'organization' ? 'organization' : capabilityEntity.matches[0]?.type === 'project' ? 'project' : capabilityEntity.matches[0]?.type === 'product' ? 'product' : 'person' });
+        activeEntityAfter = entity;
+        if (mongoose.isValidObjectId(parsed.data.conversationId)) await Conversation.findByIdAndUpdate(parsed.data.conversationId, { $set: { activeEntityId: entity.id ?? null, activeEntityName: entity.name, activeEntityType: entity.type, updatedAt: new Date() } });
+      }
     } catch {
       // Entity lookup failure must not block general chat.
     }
     const capability = await routeCapability(latestUserQuestion, { knowledgeMode: requestedStrategy, entityMatches: capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous });
     if(traceSession)await traceSession.update({routing:{capability:capability.capability,reasonCode:capability.reasonCode,confidence:capability.confidence,deterministicOrAI:capability.fallbackUsed?'fallback':'deterministic'},entityResolution:{candidates:capabilityEntity.matches,selectedEntity:capability.matchedEntity,matchType:capability.entityMatchType,confidence:capability.confidence}});
     if (shadowModeEnabled && traceSession) {
-      shadowComparison = runShadowComparison({ query: latestUserQuestion, context: { requestId: traceSession.trace.requestId, conversationId: undefined, assistantMode: requestedStrategy, abortSignal: req.signal }, oldFlow: { capability: capability.capability, entity: capability.matchedEntity, requestedFields: capability.requestedOperation ? [capability.requestedOperation] : [], fallbackUsed: capability.fallbackUsed }, entityHints: capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous, responseLanguage: language.responseLanguage }).catch((error: unknown) => Promise.reject(error));
+      const recentMessages = parsed.data.messages.slice(0, -1).slice(-6);
+      shadowComparison = runShadowComparison({ query: contextResolvedQuery, context: { requestId: traceSession.trace.requestId, conversationId: parsed.data.conversationId, assistantMode: requestedStrategy, abortSignal: req.signal }, oldFlow: { capability: capability.capability, entity: capability.matchedEntity, requestedFields: capability.requestedOperation ? [capability.requestedOperation] : [], fallbackUsed: capability.fallbackUsed }, entityHints: activeEntityBefore ? [{ type: activeEntityBefore.type, name: activeEntityBefore.name, id: activeEntityBefore.id }] : capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous, responseLanguage: language.responseLanguage, recentMessages }).catch((error: unknown) => Promise.reject(error));
       await traceSession.update({ shadowModeEnabled: true });
     }
     if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] capability router', { selectedCapability: capability.capability, confidence: capability.confidence, reasonCode: capability.reasonCode, detectedEntities: capability.entities, deterministic: !capability.fallbackUsed, fallbackUsed: capability.fallbackUsed ?? false });

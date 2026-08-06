@@ -38,7 +38,7 @@ export function ChatProvider({ children }: { children: React.ReactNode }) {
     const controller = new AbortController(); abortRef.current = controller; setIsStreaming(true); let content = '';
     try {
       const chatMode = knowledgeMode === 'off' ? 'normal' : 'knowledge_hybrid';
-      const chatPayload = { messages: history.slice(-MAX_HISTORY).map(({ role, content: messageContent }) => ({ role, content: messageContent })), mode: conversation.assistantMode, knowledgeMode, chatMode };
+      const chatPayload = { messages: history.slice(-MAX_HISTORY).map(({ role, content: messageContent }) => ({ role, content: messageContent })), conversationId: conversation.id, mode: conversation.assistantMode, knowledgeMode, chatMode };
       if (process.env.NODE_ENV !== 'production') console.info('[Chat] selected knowledgeMode:', knowledgeMode);
       const response = await fetch('/api/chat', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(chatPayload), signal: controller.signal });
       if (!response.ok) {
