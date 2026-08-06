@@ -11,10 +11,13 @@ export type GraphEntityCandidate = {
 export type GraphFactCandidate = {
   subjectTemporaryId: string;
   predicate: string;
+  /** Canonical atomic field. `predicate` remains for graph compatibility. */
+  field?: string;
   value: string | number | boolean | string[];
   valueType: KnowledgeGraphValueType;
   confidence: number;
   supportingText: string;
+  qualifiers?: Record<string, unknown>;
 };
 
 export type GraphRelationshipCandidate = {
@@ -62,10 +65,12 @@ export const graphExtractionSchema = z.object({
   facts: z.array(z.object({
     subjectTemporaryId: z.string().min(1).max(100),
     predicate: z.string().min(1).max(120),
+    field: z.string().min(1).max(120).optional(),
     value: factValueSchema,
     valueType: valueTypeSchema,
     confidence: z.number().min(0).max(1),
     supportingText: z.string().min(1).max(1500),
+    qualifiers: z.record(z.string(), z.unknown()).optional(),
   })).max(100),
   relationships: z.array(z.object({
     sourceTemporaryId: z.string().min(1).max(100),

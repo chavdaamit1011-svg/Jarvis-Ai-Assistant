@@ -29,6 +29,52 @@ function urlPredicate(rawUrl: string) {
 }
 
 function cleanValue(value: string) { return value.replace(/[.,;]+$/, '').replace(/\s+/g, ' ').trim(); }
+const normalizedFieldName = (label: string) => label.toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_|_$/g, '');
+
+/**
+ * A small canonical vocabulary gives stable field names while unknown, explicit
+ * labels remain usable as `custom.<label>`. This is intentionally domain
+ * neutral: documents can describe people, policies, products, or services.
+ */
+function canonicalField(label: string) {
+  const key = normalizedFieldName(label);
+  if (/^(?:name|full_name|identity)$/.test(key)) return 'identity';
+  if (/^(?:role|position|title|designation)$/.test(key)) return 'role';
+  if (/^(?:location|address|city|country)$/.test(key)) return 'location';
+  if (/^(?:email|e_mail)$/.test(key)) return 'email';
+  if (/^(?:phone|mobile|telephone|contact_number)$/.test(key)) return 'phone';
+  if (/^linkedin(?:_url|_profile|_link)?$/.test(key)) return 'linkedin_url';
+  if (/^github(?:_url|_profile|_link)?$/.test(key)) return 'github_url';
+  if (/^gitlab(?:_url|_profile|_link)?$/.test(key)) return 'gitlab_url';
+  if (/^(?:portfolio|portfolio_url|website|website_url|url)$/.test(key)) return key.startsWith('portfolio') ? 'portfolio_url' : 'website_url';
+  if (/^(?:education|degree|qualification|university|college|institute|school)$/.test(key)) return `education.${key}`;
+  if (/^(?:certificate|certification|course)$/.test(key)) return 'certification';
+  if (/^(?:skill|skills|technology|technologies|tech_stack|tools|languages)$/.test(key)) return 'skill';
+  if (/^(?:project|projects|project_work|portfolio_projects)$/.test(key)) return 'project';
+  if (/^(?:product|products)$/.test(key)) return 'product';
+  if (/^(?:service|services)$/.test(key)) return 'service';
+  if (/^(?:policy|policies|refund_policy|privacy_policy|terms)$/.test(key)) return 'policy';
+  if (/^(?:date|start_date|end_date|valid_from|valid_until)$/.test(key)) return 'date';
+  if (/^(?:id|identifier|customer_id|order_id|policy_id)$/.test(key)) return 'id';
+  return key ? `custom.${key}` : 'custom.value';
+}
+
+function isMultiValueField(field: string) {
+  return ['skill', 'project', 'product', 'service', 'certification'].includes(field);
+}
+
+function splitAtomicValues(value: string, field: string) {
+  const cleaned = cleanValue(value);
+  if (!isMultiValueField(field)) return cleaned ? [cleaned] : [];
+  return cleaned.split(/\s*(?:\||;|,|\u2022)\s*/).map(cleanValue).filter((item) => item.length >= 2);
+}
+
+function valueTypeForField(field: string, value: string): GraphFactCandidate['valueType'] {
+  if (/^(?:https?:\/\/|www\.)/i.test(value) || field.includes('url')) return 'url';
+  if (field === 'date' && /\b\d{4}\b|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(value)) return 'date';
+  if (field === 'id' && /^[A-Za-z0-9_-]{2,80}$/.test(value)) return 'string';
+  return 'string';
+}
 function splitExplicitTechnologyValues(value: string) {
   return value.replace(/\band\b/gi, ',').split(/[,|;/]/).map((item) => cleanValue(item.replace(/^[-â€¢*\s]+/, '')))
     .filter((item) => item.length >= 2 && item.length <= 80 && !/^(?:skills?|technologies|tech stack|languages?)$/i.test(item));
@@ -45,19 +91,20 @@ export function extractDeterministicFacts(content: string): GraphExtractionPaylo
     entities.set(temporaryId, existing ? { ...existing, aliases: normalizeAliases(cleaned, [...existing.aliases, ...aliases]) } : { temporaryId, entityType, name: cleaned, aliases: normalizeAliases(cleaned, aliases) });
     return temporaryId;
   };
-  const addFact = (subjectTemporaryId: string, predicate: string, value: string, valueType: GraphFactCandidate['valueType'], confidence: number, supportingText: string) => {
+  const addFact = (subjectTemporaryId: string, predicate: string, value: string, valueType: GraphFactCandidate['valueType'], confidence: number, supportingText: string, field = predicate, qualifiers?: Record<string, unknown>) => {
     const cleaned = cleanValue(value);
-    if (cleaned) facts.push({ subjectTemporaryId, predicate, value: cleaned, valueType, confidence, supportingText: supportingText.trim() });
+    if (cleaned) facts.push({ subjectTemporaryId, predicate, field, value: cleaned, valueType, confidence, supportingText: supportingText.trim(), qualifiers });
   };
   const addRelationship = (sourceTemporaryId: string, relationshipType: string, targetTemporaryId: string, confidence: number, supportingText: string) => relationships.push({ sourceTemporaryId, relationshipType, targetTemporaryId, confidence, supportingText: supportingText.trim() });
 
   const lines = content.split(/\r?\n/).map((line) => line.trim()).filter(Boolean);
   let primaryPerson: string | null = null;
+  let primarySubject: string | null = null;
   for (const line of lines) {
     const name = line.match(/^(?:name|full name)\s*:\s*([\p{L}][\p{L}'-]+(?:\s+[\p{L}][\p{L}'-]+){1,2})\s*$/iu)?.[1];
-    if (name) { primaryPerson = addEntity('person', name); continue; }
+    if (name) { primaryPerson = addEntity('person', name); primarySubject ??= primaryPerson; continue; }
     const organization = line.match(/^(?:organization|company)\s*:\s*(.{2,180})$/i)?.[1];
-    if (organization) { addEntity('organization', organization); continue; }
+    if (organization) { primarySubject ??= addEntity('organization', organization); continue; }
     const project = line.match(/^(?:project|product)\s*:\s*(.{2,180})$/i)?.[1];
     if (project) { addEntity('project', project); continue; }
     const role = line.match(/^(?:role|position|title)\s*:\s*(.{2,180})$/i)?.[1];
@@ -68,6 +115,28 @@ export function extractDeterministicFacts(content: string): GraphExtractionPaylo
     }
     const experience = line.match(/^(?:experience|years? of experience)\s*:\s*(.{1,180})$/i)?.[1];
     if (experience && primaryPerson) addFact(primaryPerson, 'experience', experience, 'string', 0.95, line);
+  }
+
+  // Atomic labelled facts. Each list item is retained as an independent fact
+  // with its exact source line, allowing exact lookup/counting without losing
+  // the original semantic chunks used by RAG.
+  let activeSection: string | null = null;
+  for (const line of lines) {
+    const heading = line.match(/^([A-Za-z][A-Za-z &/-]{2,80})$/)?.[1];
+    if (heading && /^[A-Z\s&/-]+$/.test(heading) && !/^(?:NAME|ROLE|TITLE)$/i.test(heading)) {
+      activeSection = canonicalField(heading);
+      continue;
+    }
+    const labelled = line.match(/^([A-Za-z][A-Za-z &/-]{1,80})\s*:\s*(.+)$/);
+    const label = labelled?.[1] ?? activeSection;
+    const rawValue = labelled?.[2] ?? (activeSection ? line : null);
+    if (!label || !rawValue || !primarySubject) continue;
+    const field = labelled ? canonicalField(label) : activeSection!;
+    if (field === 'identity') continue;
+    for (const value of splitAtomicValues(rawValue, field)) {
+      if (value.length > 500 || /^(?:education|skills?|projects?|contact)$/i.test(value)) continue;
+      addFact(primarySubject, field, value, valueTypeForField(field, value), 0.97, line, field, labelled ? { label: labelled[1] } : { section: label });
+    }
   }
 
   const proseMatch = content.match(/\b([A-Z][\p{L}'-]+(?:\s+[A-Z][\p{L}'-]+){1,2})\s+is\s+(?:an?\s+)?([A-Za-z][A-Za-z\s-]{2,60}?(?:developer|engineer|designer|manager|consultant))\b/iu);

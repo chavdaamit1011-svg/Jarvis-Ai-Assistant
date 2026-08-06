@@ -51,3 +51,31 @@ test('extracts resume project blocks with evidence and project technology relati
   assert.ok(result.relationships.some((relationship) => relationship.sourceTemporaryId === person?.temporaryId && relationship.targetTemporaryId === project?.temporaryId && relationship.relationshipType === 'WORKED_ON'));
   assert.ok(result.facts.some((fact) => fact.subjectTemporaryId === project?.temporaryId && fact.predicate === 'project_url' && fact.value === 'https://orbitpay.example/'));
 });
+
+test('creates separate atomic education and skill facts from an explicit resume section', () => {
+  const result = extractDeterministicFacts('Name: Dana Verma\nEDUCATION\nBachelor of Commerce | 2021 - 2024\nMaster of Computer Application | 2025 - 2027\nSKILLS\nTypeScript, React.js, Node.js');
+  const education = result.facts.filter((fact) => fact.field?.startsWith('education.'));
+  const skills = result.facts.filter((fact) => fact.field === 'skill');
+  assert.equal(education.length, 2);
+  assert.deepEqual(education.map((fact) => fact.value), ['Bachelor of Commerce | 2021 - 2024', 'Master of Computer Application | 2025 - 2027']);
+  assert.equal(skills.length, 3);
+  assert.ok(skills.every((fact) => fact.supportingText === 'TypeScript, React.js, Node.js'));
+});
+
+test('extracts policy, product and service values without assuming missing facts', () => {
+  const result = extractDeterministicFacts('Company: Northwind Retail\nRefund Policy: Refunds are accepted within 30 days.\nProducts: Winter Jacket, Travel Bag\nServices: Gift wrapping; Express delivery');
+  assert.ok(result.facts.some((fact) => fact.field === 'policy' && fact.value === 'Refunds are accepted within 30 days'));
+  assert.deepEqual(result.facts.filter((fact) => fact.field === 'product').map((fact) => fact.value), ['Winter Jacket', 'Travel Bag']);
+  assert.deepEqual(result.facts.filter((fact) => fact.field === 'service').map((fact) => fact.value), ['Gift wrapping', 'Express delivery']);
+  assert.equal(result.facts.some((fact) => fact.field === 'date_of_birth'), false);
+});
+
+test('preserves exact contact values and identifiers with their source lines', () => {
+  const result = extractDeterministicFacts('Name: Priya Nair\nEmail: Priya.Nair@Example.com\nPhone: +91 98765 43210\nCustomer ID: CUST-9012\nWebsite: https://Example.com/Profiles/Priya');
+  const values = result.facts.map((fact) => fact.value);
+  assert.ok(values.includes('Priya.Nair@Example.com'));
+  assert.ok(values.includes('+91 98765 43210'));
+  assert.ok(values.includes('CUST-9012'));
+  assert.ok(values.includes('https://Example.com/Profiles/Priya'));
+  assert.ok(result.facts.filter((fact) => values.includes(fact.value as string)).every((fact) => fact.supportingText.length > 0));
+});

@@ -2,6 +2,10 @@ import mongoose, { Schema, type InferSchemaType, type Model } from 'mongoose';
 
 const knowledgeFactSchema = new Schema({
   entityId: { type: Schema.Types.ObjectId, ref: 'KnowledgeEntity', required: true, index: true },
+  // Denormalized identity is deliberately retained with each atomic fact. It
+  // makes exact lookup/debugging possible without changing graph resolution.
+  entityName: { type: String, trim: true, maxlength: 180, index: true },
+  entityType: { type: String, enum: ['person', 'organization', 'project', 'product', 'technology', 'location', 'other'], index: true },
   predicate: { type: String, required: true, trim: true, maxlength: 120, default: 'legacy_fact' },
   valueType: { type: String, enum: ['string', 'number', 'boolean', 'date', 'url', 'entity_reference', 'string_array'], required: true, default: 'string' },
   // Mixed is intentional: the graph supports typed scalar and array values.
@@ -12,7 +16,13 @@ const knowledgeFactSchema = new Schema({
   confidence: { type: Number, required: true, min: 0, max: 1 },
   documentId: { type: Schema.Types.ObjectId, ref: 'KnowledgeDocument', required: true, index: true },
   chunkId: { type: Schema.Types.ObjectId, ref: 'KnowledgeChunk', required: true, index: true },
+  // Source aliases are kept alongside the legacy graph field names so new
+  // ingestion consumers have an explicit, self-describing source contract.
+  sourceDocumentId: { type: Schema.Types.ObjectId, ref: 'KnowledgeDocument', index: true },
+  sourceChunkId: { type: Schema.Types.ObjectId, ref: 'KnowledgeChunk', index: true },
   sourceText: { type: String, required: true, maxlength: 1_500 },
+  status: { type: String, enum: ['active', 'rejected', 'conflicted', 'archived'], default: 'active', index: true },
+  qualifiers: { type: Schema.Types.Mixed, default: {} },
   validFrom: { type: Date },
   validUntil: { type: Date },
   isConflicting: { type: Boolean, default: false, index: true },
@@ -24,6 +34,7 @@ const knowledgeFactSchema = new Schema({
 
 knowledgeFactSchema.index({ entityId: 1, field: 1, normalizedValue: 1 });
 knowledgeFactSchema.index({ entityId: 1, predicate: 1 });
+knowledgeFactSchema.index({ entityName: 1, field: 1, normalizedValue: 1 });
 knowledgeFactSchema.index({ relatedEntityId: 1 });
 knowledgeFactSchema.index({ graphVersion: 1, documentId: 1, chunkId: 1 });
 
@@ -37,6 +48,16 @@ if (existingKnowledgeFact && !existingKnowledgeFact.schema.path('predicate')) {
     valueType: { type: String, enum: ['string', 'number', 'boolean', 'date', 'url', 'entity_reference', 'string_array'], required: true, default: 'string' },
     relatedEntityId: { type: Schema.Types.ObjectId, ref: 'KnowledgeEntity', index: true },
     validFrom: { type: Date }, validUntil: { type: Date }, isConflicting: { type: Boolean, default: false }, graphVersion: { type: String, trim: true, maxlength: 40 },
+  });
+}
+if (existingKnowledgeFact && !existingKnowledgeFact.schema.path('sourceDocumentId')) {
+  existingKnowledgeFact.schema.add({
+    entityName: { type: String, trim: true, maxlength: 180, index: true },
+    entityType: { type: String, enum: ['person', 'organization', 'project', 'product', 'technology', 'location', 'other'], index: true },
+    sourceDocumentId: { type: Schema.Types.ObjectId, ref: 'KnowledgeDocument', index: true },
+    sourceChunkId: { type: Schema.Types.ObjectId, ref: 'KnowledgeChunk', index: true },
+    status: { type: String, enum: ['active', 'rejected', 'conflicted', 'archived'], default: 'active', index: true },
+    qualifiers: { type: Schema.Types.Mixed, default: {} },
   });
 }
 export default existingKnowledgeFact || mongoose.model<KnowledgeFactRecord>('KnowledgeFact', knowledgeFactSchema);

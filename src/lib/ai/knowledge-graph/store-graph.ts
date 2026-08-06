@@ -30,7 +30,8 @@ export async function storeGraph(input: GraphChunkInput, payload: GraphExtractio
   let persistedFactCount = 0;
   const conflictKeys = new Set<string>();
   for (const [temporaryId, entityId] of Object.entries(entityIds)) {
-    const merged = await mergeFacts(entityId, payload.facts.filter((fact) => fact.subjectTemporaryId === temporaryId), input);
+    const entity = payload.entities.find((candidate) => candidate.temporaryId === temporaryId);
+    const merged = await mergeFacts(entityId, payload.facts.filter((fact) => fact.subjectTemporaryId === temporaryId), input, entity);
     persistedFactCount += merged.persistedFactCount;
     for (const conflict of merged.conflicts) conflictKeys.add(`${entityId}:${conflict.predicate}`);
   }

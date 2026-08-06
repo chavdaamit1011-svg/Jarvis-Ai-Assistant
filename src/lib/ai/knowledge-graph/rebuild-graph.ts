@@ -73,7 +73,12 @@ export async function rebuildKnowledgeGraph() {
         // races while keeping memory and provider use bounded.
         for (const chunk of batch) {
           try {
-            const result = await processKnowledgeGraphChunk({ documentId: String(document._id), chunkId: String(chunk._id), content: chunk.content, graphVersion: KNOWLEDGE_GRAPH_VERSION });
+            // Deterministic extraction always runs. AI extraction is additive
+            // and can be disabled for offline/bulk maintenance explicitly.
+            const result = await processKnowledgeGraphChunk(
+              { documentId: String(document._id), chunkId: String(chunk._id), content: chunk.content, graphVersion: KNOWLEDGE_GRAPH_VERSION },
+              { enableAi: process.env.KNOWLEDGE_ATOMIC_AI_EXTRACTION !== 'false' },
+            );
             progress.entitiesCreated += result.entitiesCreated;
             progress.factsCreated += result.persistedFactCount;
             progress.relationshipsCreated += result.persistedRelationshipCount;
