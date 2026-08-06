@@ -59,6 +59,8 @@ export function extractDeterministicFacts(content: string): GraphExtractionPaylo
       const owned = role.match(/\b(?:owner|founder|creator)\s+of\s+(.+)/i)?.[1];
       if (owned) addRelationship(primaryPerson, 'OWNER_OF', addEntity('product', owned), 0.98, line);
     }
+    const experience = line.match(/^(?:experience|years? of experience)\s*:\s*(.{1,180})$/i)?.[1];
+    if (experience && primaryPerson) addFact(primaryPerson, 'experience', experience, 'string', 0.95, line);
   }
 
   const proseMatch = content.match(/\b([A-Z][\p{L}'-]+(?:\s+[A-Z][\p{L}'-]+){1,2})\s+is\s+(?:an?\s+)?([A-Za-z][A-Za-z\s-]{2,60}?(?:developer|engineer|designer|manager|consultant))\b/iu);

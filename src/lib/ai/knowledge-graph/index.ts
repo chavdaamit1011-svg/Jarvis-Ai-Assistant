@@ -11,8 +11,16 @@ export type {
 export { extractDeterministicFacts } from './extract-deterministic-facts';
 export { extractAiFacts } from './extract-ai-facts';
 export { mergeEntity } from './merge-entity';
+export { resolveEntity } from './resolve-entity';
+export { mergeFacts, normalizeGraphFactValue } from './merge-facts';
+export { valuesConflict } from './fact-normalization';
+export { mergeRelationships } from './merge-relationships';
+export { detectConflicts } from './detect-conflicts';
+export { getEntityProfile } from './get-entity-profile';
 export { storeGraph } from './store-graph';
 export { processKnowledgeGraphChunk } from './process-chunk';
 export { createTemporaryEntityId, normalizeAliases, normalizeEntityName } from './normalize-entity';
 export { graphExtractionSchema } from './graph-types';
 export type { GraphChunkInput, GraphEntityCandidate, GraphExtractionPayload, GraphFactCandidate, GraphProcessResult, GraphRelationshipCandidate } from './graph-types';
+export type { ConsolidatedEntityProfile } from './get-entity-profile';
+export type { EntityIdentityEvidence, EntityResolutionOutcome, EntityResolutionResult } from './resolve-entity';
