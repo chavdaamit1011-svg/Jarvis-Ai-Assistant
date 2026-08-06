@@ -10,7 +10,7 @@ import type { QueryUnderstanding } from '@/lib/ai/query-understanding';
 import { normalizeEntityName } from './normalize-entity';
 import { GRAPH_FACT_PREDICATES, GRAPH_RELATIONSHIPS, QUERY_FIELD_TO_GRAPH_PREDICATE } from './ontology';
 
-export type GraphChatSource = { documentTitle: string; chunkIndex: number; score: number; documentId: string; chunkId: string };
+export type GraphChatSource = { documentTitle: string; chunkIndex: number; score: number; documentId: string; chunkId: string; supportingText?: string };
 export type GraphChatResult = {
   kind: 'answer' | 'ambiguous' | 'none';
   answer?: string;
@@ -19,6 +19,7 @@ export type GraphChatResult = {
   relationshipsUsed: string[];
   sources: GraphChatSource[];
   candidates?: string[];
+  conflicts?: Array<{ field: string; values: string[] }>;
 };
 
 const STOP_WORDS = new Set(['who', 'what', 'is', 'are', 'the', 'a', 'an', 'ka', 'ki', 'ke', 'kis', 'kya', 'kon', 'kaun', 'he', 'hai', 'hain', 'me', 'par', 'on', 'with', 'works', 'work', 'owner', 'owners', 'of', 'ai']);
@@ -46,14 +47,14 @@ async function sourcesFor(references: Array<{ documentId: unknown; chunkId: unkn
   const chunkIds = unique(references.map((reference) => String(reference.chunkId)));
   const [documents, chunks] = await Promise.all([
     KnowledgeDocument.find({ _id: { $in: documentIds } }).select('title').lean(),
-    KnowledgeChunk.find({ _id: { $in: chunkIds } }).select('documentId chunkIndex').lean(),
+    KnowledgeChunk.find({ _id: { $in: chunkIds } }).select('documentId chunkIndex content').lean(),
   ]);
   const titles = new Map(documents.map((document) => [String(document._id), document.title]));
   const chunkMap = new Map(chunks.map((chunk) => [String(chunk._id), chunk]));
   return unique(chunkIds).flatMap((chunkId) => {
     const chunk = chunkMap.get(chunkId);
     if (!chunk) return [];
-    return [{ documentTitle: titles.get(String(chunk.documentId)) ?? 'Knowledge document', chunkIndex: chunk.chunkIndex, score: 1, documentId: String(chunk.documentId), chunkId }];
+    return [{ documentTitle: titles.get(String(chunk.documentId)) ?? 'Knowledge document', chunkIndex: chunk.chunkIndex, score: 1, documentId: String(chunk.documentId), chunkId, supportingText: chunk.content }];
   });
 }
 
@@ -74,7 +75,7 @@ export async function lookupKnowledgeGraph(input: { query: string; understanding
   const asksProject = input.understanding.requestedField === 'projects' || /\bprojects?\b/i.test(input.query);
   const broadIdentity = input.understanding.requestedField === 'summary' || /\b(?:who is|about|kon he|kon hai|kaun hai|kya karta)\b/i.test(input.query);
 
-  // Relationship questions such as "Who owns Jarvis AI?" can name the target.
+  // A relationship question can name its target instead of its source entity.
   if (asksOwner) {
     const target = entity ?? entities.find((candidate) => matchesName(candidate, null, input.query));
     if (target) {
@@ -115,7 +116,8 @@ export async function lookupKnowledgeGraph(input: { query: string; understanding
   const exactPredicate = QUERY_FIELD_TO_GRAPH_PREDICATE[input.understanding.requestedField];
   if (exactPredicate) {
     if (facts.some((fact) => fact.predicate === exactPredicate && fact.isConflicting)) {
-      return { kind: 'answer', answer: `Uploaded knowledge mein ${entity.canonicalName} ke ${input.understanding.requestedField.replace('_', ' ')} ke baare mein conflicting information hai. Kripya source documents verify karein.`, entitiesUsed: [String(entity._id)], factsUsed: facts.filter((fact) => fact.predicate === exactPredicate).map((fact) => String(fact._id)), relationshipsUsed: [], sources };
+      const conflictingFacts = facts.filter((fact) => fact.predicate === exactPredicate);
+      return { kind: 'answer', answer: `Uploaded knowledge mein ${entity.canonicalName} ke ${input.understanding.requestedField.replace('_', ' ')} ke baare mein conflicting information hai. Kripya source documents verify karein.`, entitiesUsed: [String(entity._id)], factsUsed: conflictingFacts.map((fact) => String(fact._id)), relationshipsUsed: [], sources, conflicts: [{ field: exactPredicate, values: unique(conflictingFacts.map((fact) => valueText(fact.value))) }] };
     }
     const values = factValues(exactPredicate);
     if (values.length === 1) return { kind: 'answer', answer: `${entity.canonicalName} ka ${input.understanding.requestedField.replace('_', ' ')}:\n${values[0]}`, entitiesUsed: [String(entity._id)], factsUsed: facts.filter((fact) => fact.predicate === exactPredicate).map((fact) => String(fact._id)), relationshipsUsed: [], sources };
@@ -146,7 +148,7 @@ export async function lookupKnowledgeGraph(input: { query: string; understanding
         ...outgoing.filter((relationship) => relationship.isConflicting).map((relationship) => relationship.relationshipType),
       ]);
       if (conflicts.length) answer += ` Uploaded knowledge mein ${naturalList(conflicts)} ke baare mein conflicting information hai; source documents check karein.`;
-      return { kind: 'answer', answer, entitiesUsed: [String(entity._id), ...targetIds], factsUsed: facts.filter((fact) => [GRAPH_FACT_PREDICATES.profession, GRAPH_FACT_PREDICATES.role].includes(fact.predicate as typeof GRAPH_FACT_PREDICATES.profession)).map((fact) => String(fact._id)), relationshipsUsed: outgoing.map((item) => String(item._id)), sources };
+      return { kind: 'answer', answer, entitiesUsed: [String(entity._id), ...targetIds], factsUsed: facts.filter((fact) => [GRAPH_FACT_PREDICATES.profession, GRAPH_FACT_PREDICATES.role].includes(fact.predicate as typeof GRAPH_FACT_PREDICATES.profession)).map((fact) => String(fact._id)), relationshipsUsed: outgoing.map((item) => String(item._id)), sources, conflicts: facts.filter((fact) => fact.isConflicting).map((fact) => ({ field: fact.predicate, values: [valueText(fact.value)] })) };
     }
   }
   return { kind: 'none', entitiesUsed: [String(entity._id)], factsUsed: [], relationshipsUsed: [], sources: [] };

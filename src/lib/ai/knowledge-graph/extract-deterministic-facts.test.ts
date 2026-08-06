@@ -31,3 +31,13 @@ test('does not turn uncertain technology wording into a relationship', () => {
   const result = extractDeterministicFacts('Name: Amit Sharma\nAmit may use React.js on a future project.');
   assert.equal(result.relationships.filter((relationship) => relationship.relationshipType === 'USES_TECHNOLOGY').length, 0);
 });
+
+test('extracts unseen people, organizations, projects, and explicit relationships', () => {
+  const result = extractDeterministicFacts('Neel Desai is a Flutter Developer at BlueOrbit Labs.\nNeel created the OrbitPay mobile application.');
+  assert.ok(result.entities.some((entity) => entity.name === 'Neel Desai' && entity.entityType === 'person'));
+  assert.ok(result.entities.some((entity) => entity.name === 'BlueOrbit Labs' && entity.entityType === 'organization'));
+  assert.ok(result.entities.some((entity) => entity.name === 'OrbitPay' && entity.entityType === 'project'));
+  assert.ok(result.facts.some((fact) => fact.predicate === 'profession' && fact.value === 'Flutter Developer'));
+  assert.ok(result.relationships.some((relationship) => relationship.relationshipType === 'WORKS_AT'));
+  assert.ok(result.relationships.some((relationship) => relationship.relationshipType === 'CREATED'));
+});
