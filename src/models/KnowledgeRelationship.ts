@@ -18,6 +18,8 @@ knowledgeRelationshipSchema.index({ relationshipType: 1 });
 knowledgeRelationshipSchema.index({ graphVersion: 1, documentId: 1, chunkId: 1 });
 
 export type KnowledgeRelationshipRecord = InferSchemaType<typeof knowledgeRelationshipSchema>;
-
-export default (mongoose.models.KnowledgeRelationship as Model<KnowledgeRelationshipRecord>)
-  || mongoose.model<KnowledgeRelationshipRecord>('KnowledgeRelationship', knowledgeRelationshipSchema);
+const existingKnowledgeRelationship = mongoose.models.KnowledgeRelationship as Model<KnowledgeRelationshipRecord> | undefined;
+if (existingKnowledgeRelationship && !existingKnowledgeRelationship.schema.path('graphVersion')) {
+  existingKnowledgeRelationship.schema.add({ graphVersion: { type: String, trim: true, maxlength: 40 } });
+}
+export default existingKnowledgeRelationship || mongoose.model<KnowledgeRelationshipRecord>('KnowledgeRelationship', knowledgeRelationshipSchema);

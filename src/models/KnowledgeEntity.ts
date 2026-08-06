@@ -19,4 +19,14 @@ knowledgeEntitySchema.index({ entityType: 1, normalizedName: 1 }, { unique: true
 knowledgeEntitySchema.index({ aliases: 1 });
 
 export type KnowledgeEntityRecord = InferSchemaType<typeof knowledgeEntitySchema>;
-export default (mongoose.models.KnowledgeEntity as Model<KnowledgeEntityRecord>) || mongoose.model<KnowledgeEntityRecord>('KnowledgeEntity', knowledgeEntitySchema);
+const existingKnowledgeEntity = mongoose.models.KnowledgeEntity as Model<KnowledgeEntityRecord> | undefined;
+if (existingKnowledgeEntity && !existingKnowledgeEntity.schema.path('sourceDocumentIds')) {
+  existingKnowledgeEntity.schema.add({
+    description: { type: String, trim: true, maxlength: 2_000 },
+    sourceDocumentIds: [{ type: Schema.Types.ObjectId, ref: 'KnowledgeDocument' }],
+    sourceChunkIds: [{ type: Schema.Types.ObjectId, ref: 'KnowledgeChunk' }],
+    confidence: { type: Number, min: 0, max: 1, default: 0.5 },
+    status: { type: String, enum: ['active', 'conflicted', 'archived'], default: 'active' },
+  });
+}
+export default existingKnowledgeEntity || mongoose.model<KnowledgeEntityRecord>('KnowledgeEntity', knowledgeEntitySchema);

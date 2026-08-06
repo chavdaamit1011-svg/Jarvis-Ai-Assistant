@@ -109,6 +109,11 @@ export default function KnowledgePage() {
   const startRebuild = async () => {
     if (rebuilding || rebuild?.status === 'running') return;
     setRebuilding(true); setError('');
+    setRebuild((current) => ({
+      status: 'running',
+      graphVersion: current?.graphVersion ?? 'kg-v1',
+      progress: { totalDocuments: 0, processedDocuments: 0, totalChunks: 0, processedChunks: 0, entitiesCreated: 0, factsCreated: 0, relationshipsCreated: 0, conflictsFound: 0, failedChunks: 0 },
+    }));
     try {
       const response = await fetch('/api/knowledge-graph/rebuild', { method: 'POST' });
       const data = await response.json();

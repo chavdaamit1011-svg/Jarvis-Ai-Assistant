@@ -28,4 +28,15 @@ knowledgeFactSchema.index({ relatedEntityId: 1 });
 knowledgeFactSchema.index({ graphVersion: 1, documentId: 1, chunkId: 1 });
 
 export type KnowledgeFactRecord = InferSchemaType<typeof knowledgeFactSchema>;
-export default (mongoose.models.KnowledgeFact as Model<KnowledgeFactRecord>) || mongoose.model<KnowledgeFactRecord>('KnowledgeFact', knowledgeFactSchema);
+const existingKnowledgeFact = mongoose.models.KnowledgeFact as Model<KnowledgeFactRecord> | undefined;
+// Next.js Fast Refresh can retain a model compiled before new graph fields were
+// introduced. Add missing paths to that cached model instead of recompiling it.
+if (existingKnowledgeFact && !existingKnowledgeFact.schema.path('predicate')) {
+  existingKnowledgeFact.schema.add({
+    predicate: { type: String, required: true, trim: true, maxlength: 120, default: 'legacy_fact' },
+    valueType: { type: String, enum: ['string', 'number', 'boolean', 'date', 'url', 'entity_reference', 'string_array'], required: true, default: 'string' },
+    relatedEntityId: { type: Schema.Types.ObjectId, ref: 'KnowledgeEntity', index: true },
+    validFrom: { type: Date }, validUntil: { type: Date }, isConflicting: { type: Boolean, default: false }, graphVersion: { type: String, trim: true, maxlength: 40 },
+  });
+}
+export default existingKnowledgeFact || mongoose.model<KnowledgeFactRecord>('KnowledgeFact', knowledgeFactSchema);
