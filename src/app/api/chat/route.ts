@@ -23,6 +23,7 @@ import { routeCapability, resolveEntityBeforeRouting } from '@/lib/ai/brain';
 import { toolRegistry } from '@/lib/ai/tools';
 import { createTrace } from '@/lib/ai/trace';
 import { runShadowComparison, type ShadowComparison } from '@/lib/ai/brain/shadow-mode';
+import { compareEvidencePipeline } from '@/lib/ai/brain/pipeline';
 
 export const runtime = 'nodejs';
 
@@ -115,7 +116,11 @@ export async function POST(req: Request) {
           const oldFlow = { ...shadow.oldFlow, answerSource: metadata.answerSource, fallbackUsed: metadata.usedFallback };
           const answerSourceMatch = shadow.newBrain.answerSource === metadata.answerSource.replaceAll('-', '_');
           const comparison = { ...shadow.comparison, answerSourceMatch, overallMatch: shadow.comparison.capabilityMatch && shadow.comparison.entityMatch && shadow.comparison.requestedFieldsMatch && answerSourceMatch };
-          return traceSession.update({ shadowModeEnabled: true, oldRoutingResult: oldFlow, newPlannerResult: { capability: shadow.newBrain.capability, operation: shadow.newBrain.operation, entities: shadow.newBrain.entities, requestedFields: shadow.newBrain.requestedFields }, newExecutorResult: { status: shadow.newBrain.executorStatus, answerSource: shadow.newBrain.answerSource, fallbackAllowed: shadow.newBrain.fallbackAllowed }, routingDifferences: comparison, comparisonStatus: comparison.overallMatch ? 'match' : 'mismatch' });
+          const pipelineComparison = compareEvidencePipeline({ oldAnswerSource: metadata.answerSource, oldAnswerPreview: 'Live response streaming; preview unavailable in shadow mode.', pipeline: shadow.pipeline });
+          const timeline = ['planner', 'executor'];
+          if (shadow.pipeline.status === 'success' || shadow.pipeline.status === 'rejected') timeline.push('evidence_builder', 'answer_composer', 'answer_validator');
+          timeline.push('comparison');
+          return traceSession.update({ shadowModeEnabled: true, oldRoutingResult: oldFlow, newPlannerResult: { capability: shadow.newBrain.capability, operation: shadow.newBrain.operation, entities: shadow.newBrain.entities, requestedFields: shadow.newBrain.requestedFields, rawQuery: shadow.normalizer.rawQuery, cleanedQuery: shadow.normalizer.cleanedQuery, normalizedMeaning: shadow.normalizer.normalizedMeaning, detectedLanguage: shadow.normalizer.detectedLanguage, responseLanguage: shadow.normalizer.responseLanguage, corrections: shadow.normalizer.corrections, normalizerMethod: shadow.normalizer.normalizerMethod, normalizerConfidence: shadow.normalizer.confidence, normalizerFallbackUsed: shadow.normalizer.fallbackUsed }, newExecutorResult: { status: shadow.newBrain.executorStatus, answerSource: shadow.newBrain.answerSource, fallbackAllowed: shadow.newBrain.fallbackAllowed }, routingDifferences: comparison, pipelineComparison, pipelineTimeline: timeline, comparisonStatus: pipelineComparison.overallStatus === 'shadow_failed' ? 'error' : comparison.overallMatch ? 'match' : 'mismatch' });
         }).then(() => {
           if (process.env.NODE_ENV !== 'production') console.info('[AI Brain shadow]', { oldCapability: 'recorded', match: 'recorded' });
         }).catch((error: unknown) => {
