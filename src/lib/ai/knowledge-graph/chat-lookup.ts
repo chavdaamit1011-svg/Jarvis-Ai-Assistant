@@ -9,6 +9,7 @@ import KnowledgeRelationship from '@/models/KnowledgeRelationship';
 import type { QueryUnderstanding } from '@/lib/ai/query-understanding';
 import { normalizeEntityName } from './normalize-entity';
 import { GRAPH_FACT_PREDICATES, GRAPH_RELATIONSHIPS, QUERY_FIELD_TO_GRAPH_PREDICATE } from './ontology';
+import { formatKnowledgeFacts, listForLanguage, type DetectedResponseLanguage } from '@/lib/ai/response-language';
 
 export type GraphChatSource = { documentTitle: string; chunkIndex: number; score: number; documentId: string; chunkId: string; supportingText?: string };
 export type GraphChatResult = {
@@ -40,7 +41,6 @@ function matchesName(entity: { normalizedName: string; aliases?: string[] }, nam
 }
 
 function valueText(value: unknown) { return Array.isArray(value) ? value.filter((item): item is string => typeof item === 'string').join(', ') : String(value ?? ''); }
-function naturalList(values: string[]) { return values.length > 1 ? `${values.slice(0, -1).join(', ')} aur ${values.at(-1)}` : values[0] ?? ''; }
 
 async function sourcesFor(references: Array<{ documentId: unknown; chunkId: unknown }>) {
   const documentIds = unique(references.map((reference) => String(reference.documentId)));
@@ -62,7 +62,8 @@ async function sourcesFor(references: Array<{ documentId: unknown; chunkId: unkn
  * Deterministic graph-first answer lookup. It returns only stored facts and
  * relationships; callers can safely fall through to structured/RAG/LLM paths.
  */
-export async function lookupKnowledgeGraph(input: { query: string; understanding: QueryUnderstanding }): Promise<GraphChatResult> {
+export async function lookupKnowledgeGraph(input: { query: string; understanding: QueryUnderstanding; responseLanguage?: DetectedResponseLanguage }): Promise<GraphChatResult> {
+  const language = input.responseLanguage ?? 'hinglish';
   await connectToDatabase();
   const entities = await KnowledgeEntity.find({ status: 'active' }).select('canonicalName normalizedName aliases entityType').lean();
   const matches = entities.filter((entity) => matchesName(entity, input.understanding.entityName, input.query));
@@ -87,7 +88,7 @@ export async function lookupKnowledgeGraph(input: { query: string; understanding
         const owner = entities.find((candidate) => String(candidate._id) === String(relationships[0].sourceEntityId));
         if (owner) {
           const sources = await sourcesFor(relationships);
-          return { kind: 'answer', answer: `${owner.canonicalName} ${target.canonicalName} ke owner hain.`, entitiesUsed: [String(owner._id), String(target._id)], factsUsed: [], relationshipsUsed: relationships.map((item) => String(item._id)), sources };
+          return { kind: 'answer', answer: formatKnowledgeFacts({ language, kind: 'owner', entity: owner.canonicalName, target: target.canonicalName }), entitiesUsed: [String(owner._id), String(target._id)], factsUsed: [], relationshipsUsed: relationships.map((item) => String(item._id)), sources };
         }
       }
     }
@@ -100,7 +101,7 @@ export async function lookupKnowledgeGraph(input: { query: string; understanding
       const person = entities.find((candidate) => String(candidate._id) === String(relationships[0].sourceEntityId));
       if (person) {
         const sources = await sourcesFor(relationships);
-        return { kind: 'answer', answer: `${person.canonicalName} ${entity.canonicalName} par kaam karte hain.`, entitiesUsed: [String(person._id), String(entity._id)], factsUsed: [], relationshipsUsed: relationships.map((item) => String(item._id)), sources };
+        return { kind: 'answer', answer: formatKnowledgeFacts({ language, kind: 'technology', entity: person.canonicalName, values: [entity.canonicalName] }), entitiesUsed: [String(person._id), String(entity._id)], factsUsed: [], relationshipsUsed: relationships.map((item) => String(item._id)), sources };
       }
     }
   }
@@ -120,37 +121,45 @@ export async function lookupKnowledgeGraph(input: { query: string; understanding
   if (exactPredicate) {
     if (facts.some((fact) => fact.predicate === exactPredicate && fact.isConflicting)) {
       const conflictingFacts = facts.filter((fact) => fact.predicate === exactPredicate);
-      return { kind: 'answer', answer: `Uploaded knowledge mein ${entity.canonicalName} ke ${input.understanding.requestedField.replace('_', ' ')} ke baare mein conflicting information hai. Kripya source documents verify karein.`, entitiesUsed: [String(entity._id)], factsUsed: conflictingFacts.map((fact) => String(fact._id)), relationshipsUsed: [], sources, conflicts: [{ field: exactPredicate, values: unique(conflictingFacts.map((fact) => valueText(fact.value))) }] };
+      return { kind: 'answer', answer: formatKnowledgeFacts({ language, kind: 'field', entity: entity.canonicalName, field: input.understanding.requestedField, values: ['conflicting information is available; please verify the source documents.'] }), entitiesUsed: [String(entity._id)], factsUsed: conflictingFacts.map((fact) => String(fact._id)), relationshipsUsed: [], sources, conflicts: [{ field: exactPredicate, values: unique(conflictingFacts.map((fact) => valueText(fact.value))) }] };
     }
     const values = factValues(exactPredicate);
-    if (values.length === 1) return { kind: 'answer', answer: `${entity.canonicalName} ka ${input.understanding.requestedField.replace('_', ' ')}:\n${values[0]}`, entitiesUsed: [String(entity._id)], factsUsed: facts.filter((fact) => fact.predicate === exactPredicate).map((fact) => String(fact._id)), relationshipsUsed: [], sources };
+    if (values.length === 1) return { kind: 'answer', answer: formatKnowledgeFacts({ language, kind: 'field', entity: entity.canonicalName, field: input.understanding.requestedField, values }), entitiesUsed: [String(entity._id)], factsUsed: facts.filter((fact) => fact.predicate === exactPredicate).map((fact) => String(fact._id)), relationshipsUsed: [], sources };
     if (values.length > 1) return { kind: 'ambiguous', entitiesUsed: [String(entity._id)], factsUsed: [], relationshipsUsed: [], sources: [], candidates: values };
   }
   if (asksOwner) {
     const owned = relationValues(GRAPH_RELATIONSHIPS.ownerOf);
-    if (owned.length === 1) return { kind: 'answer', answer: `${entity.canonicalName} ${owned[0]} ke owner hain.`, entitiesUsed: [String(entity._id), ...targetIds], factsUsed: [], relationshipsUsed: outgoing.filter((item) => item.relationshipType === GRAPH_RELATIONSHIPS.ownerOf).map((item) => String(item._id)), sources };
+    if (owned.length === 1) return { kind: 'answer', answer: formatKnowledgeFacts({ language, kind: 'owner', entity: entity.canonicalName, target: owned[0] }), entitiesUsed: [String(entity._id), ...targetIds], factsUsed: [], relationshipsUsed: outgoing.filter((item) => item.relationshipType === GRAPH_RELATIONSHIPS.ownerOf).map((item) => String(item._id)), sources };
   }
   if (asksTechnology) {
     const technologies = relationValues(GRAPH_RELATIONSHIPS.usesTechnology);
-    if (technologies.length) return { kind: 'answer', answer: `${entity.canonicalName} ${naturalList(technologies)} par kaam karte hain.`, entitiesUsed: [String(entity._id), ...targetIds], factsUsed: [], relationshipsUsed: outgoing.filter((item) => item.relationshipType === GRAPH_RELATIONSHIPS.usesTechnology).map((item) => String(item._id)), sources };
+    if (technologies.length) return { kind: 'answer', answer: formatKnowledgeFacts({ language, kind: 'technology', entity: entity.canonicalName, values: technologies }), entitiesUsed: [String(entity._id), ...targetIds], factsUsed: [], relationshipsUsed: outgoing.filter((item) => item.relationshipType === GRAPH_RELATIONSHIPS.usesTechnology).map((item) => String(item._id)), sources };
   }
   if (asksProject) {
     const projects = unique([...relationValues(GRAPH_RELATIONSHIPS.built), ...relationValues(GRAPH_RELATIONSHIPS.workedOn)]);
-    if (projects.length) return { kind: 'answer', answer: `${entity.canonicalName} ke projects: ${naturalList(projects)}.`, entitiesUsed: [String(entity._id), ...targetIds], factsUsed: [], relationshipsUsed: outgoing.filter((item) => [GRAPH_RELATIONSHIPS.built, GRAPH_RELATIONSHIPS.workedOn].includes(item.relationshipType as typeof GRAPH_RELATIONSHIPS.built)).map((item) => String(item._id)), sources };
+    if (projects.length) return { kind: 'answer', answer: formatKnowledgeFacts({ language, kind: 'projects', entity: entity.canonicalName, values: projects }), entitiesUsed: [String(entity._id), ...targetIds], factsUsed: [], relationshipsUsed: outgoing.filter((item) => [GRAPH_RELATIONSHIPS.built, GRAPH_RELATIONSHIPS.workedOn].includes(item.relationshipType as typeof GRAPH_RELATIONSHIPS.built)).map((item) => String(item._id)), sources };
   }
   if (broadIdentity) {
     const profession = factValues(GRAPH_FACT_PREDICATES.profession)[0] ?? factValues(GRAPH_FACT_PREDICATES.role)[0];
     const technologies = relationValues(GRAPH_RELATIONSHIPS.usesTechnology);
     const owned = relationValues(GRAPH_RELATIONSHIPS.ownerOf);
     if (profession || technologies.length || owned.length) {
-      let answer = profession ? `${entity.canonicalName} ek ${profession} hain` : `${entity.canonicalName} ke baare mein uploaded knowledge available hai`;
-      if (technologies.length) answer += ` jo ${naturalList(technologies)} par kaam karte hain.`; else answer += '.';
-      if (owned.length) answer += ` Ve ${naturalList(owned)} ke owner hain.`;
+      let answer = language === 'english'
+        ? profession ? `${entity.canonicalName} is a ${profession}` : `Uploaded knowledge is available about ${entity.canonicalName}`
+        : language === 'gujarati_roman'
+          ? profession ? `${entity.canonicalName} ek ${profession} chhe` : `${entity.canonicalName} vishe uploaded knowledge available chhe`
+          : profession ? `${entity.canonicalName} ek ${profession} hain` : `${entity.canonicalName} ke baare mein uploaded knowledge available hai`;
+      if (technologies.length) answer += language === 'english' ? ` who works with ${listForLanguage(technologies, language)}.` : language === 'gujarati_roman' ? ` ane ${listForLanguage(technologies, language)} sathe kaam kare chhe.` : ` jo ${listForLanguage(technologies, language)} par kaam karte hain.`; else answer += '.';
+      if (owned.length) answer += language === 'english' ? ` ${entity.canonicalName} is also the owner of ${listForLanguage(owned, language)}.` : language === 'gujarati_roman' ? ` Te ${listForLanguage(owned, language)} na owner pan chhe.` : ` Ve ${listForLanguage(owned, language)} ke owner hain.`;
       const conflicts = unique([
         ...facts.filter((fact) => fact.isConflicting).map((fact) => fact.predicate),
         ...outgoing.filter((relationship) => relationship.isConflicting).map((relationship) => relationship.relationshipType),
       ]);
-      if (conflicts.length) answer += ` Uploaded knowledge mein ${naturalList(conflicts)} ke baare mein conflicting information hai; source documents check karein.`;
+      if (conflicts.length) answer += language === 'english'
+        ? ` Conflicting information exists for ${listForLanguage(conflicts, language)}; please check the source documents.`
+        : language === 'gujarati_roman'
+          ? ` ${listForLanguage(conflicts, language)} mate conflicting information chhe; source documents check karo.`
+          : ` Uploaded knowledge mein ${listForLanguage(conflicts, language)} ke baare mein conflicting information hai; source documents check karein.`;
       return { kind: 'answer', answer, entitiesUsed: [String(entity._id), ...targetIds], factsUsed: facts.filter((fact) => [GRAPH_FACT_PREDICATES.profession, GRAPH_FACT_PREDICATES.role].includes(fact.predicate as typeof GRAPH_FACT_PREDICATES.profession)).map((fact) => String(fact._id)), relationshipsUsed: outgoing.map((item) => String(item._id)), sources, conflicts: facts.filter((fact) => fact.isConflicting).map((fact) => ({ field: fact.predicate, values: [valueText(fact.value)] })) };
     }
   }
