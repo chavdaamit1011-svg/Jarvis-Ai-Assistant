@@ -65,3 +65,16 @@ test('empty results return safely with a complete trace', async () => {
   assert.deepEqual(result.trace.vectorResults, []);
   assert.equal(result.trace.deduplicatedCount, 0);
 });
+
+test('different wording for the same unseen entity returns the same supporting evidence', async () => {
+  const source = chunk('orbitpay-source', { documentId: 'neel-document', vectorScore: 0.82, matchedQueries: ['OrbitPay project details'] });
+  const search: HybridSearchDependencies = {
+    vectorSearch: async (_input, queries) => queries.some((query) => /orbitpay|application|project/i.test(query)) ? [source] : [],
+    keywordSearch: async () => [],
+    exactSearch: async () => [],
+  };
+  const first = await retrieveHybridCandidates(input({ primaryQuery: 'What did Neel create?', alternateQueries: ['Neel OrbitPay project'], semanticConcepts: ['application'] }), search);
+  const second = await retrieveHybridCandidates(input({ primaryQuery: 'Tell me about Neel projects', alternateQueries: ['Neel OrbitPay application'], semanticConcepts: ['created software'] }), search);
+  assert.deepEqual(first.candidates.map((candidate) => candidate.chunkId), ['orbitpay-source']);
+  assert.deepEqual(second.candidates.map((candidate) => candidate.chunkId), ['orbitpay-source']);
+});

@@ -4,6 +4,9 @@ import { CapabilityRegistry } from '../executor';
 import type { CapabilityHandler, ExecutionPlan } from '../executor';
 import { runEvidencePipeline } from './run-evidence-pipeline';
 import { compareEvidencePipeline, isEvidenceShadowModeEnabled } from './pipeline-comparison';
+import { buildEvidence } from '@/lib/ai/evidence-builder';
+import { composeDeterministically } from '@/lib/ai/answer';
+import { normalizeRequestedField } from '@/lib/ai/query-understanding/field-normalization';
 
 const plan = (capability: ExecutionPlan['capability'], fields: string[] = []): ExecutionPlan => ({ capability, operation: 'answer', entities: [], requestedFields: fields, arguments: {}, responseLanguage: 'English', requiresCurrentInformation: false, requiresKnowledge: capability === 'knowledge', missingInformation: [], clarificationQuestion: null, confidence: 1 });
 const context = { requestId: 'pipeline-test', assistantMode: 'knowledge_hybrid' };
@@ -30,4 +33,42 @@ test('preserves utility result and removes unsupported project claims', async ()
 });
 test('shadow-mode gate defaults to disabled', () => {
   assert.equal(isEvidenceShadowModeEnabled('false'), false); assert.equal(isEvidenceShadowModeEnabled('true'), true);
+});
+
+const rawResume = `Nora Vela is a Flutter developer focused on mobile applications.\nSKILLS\nFlutter, Firebase, Dart, Node.js\nEDUCATION\nBachelor of Computer Applications, BlueOrbit University, 2020 - 2023.\nCERTIFICATION\nCompleted mobile development course.\nPROJECTS\nCreated OrbitPay application using Flutter and Firebase.\nRAW_RESUME_MARKER_DO_NOT_RENDER`;
+const resumeResult = () => ({ capability: 'knowledge' as const, answerSource: 'rag' as const, data: null, supportedFacts: [rawResume], sources: [{ documentId: 'neel-doc', chunkId: 'neel-chunk', documentTitle: 'Neel profile', chunkIndex: 0, content: rawResume }], conflicts: [], traceMetadata: { confidence: 0.9, language: 'English' } });
+
+test('profile summary is short and does not render the raw resume chunk', () => {
+  const evidence = buildEvidence(resumeResult(), { requestedFields: ['summary'] });
+  const answer = composeDeterministically({ userQuery: 'Tell me about Nora', plan: plan('knowledge', ['summary']), evidence });
+  assert.match(answer.text, /Flutter developer/i);
+  assert.doesNotMatch(answer.text, /RAW_RESUME_MARKER|Bachelor of Computer Applications|OrbitPay/i);
+});
+
+test('study and university requests keep education evidence only', () => {
+  const evidence = buildEvidence(resumeResult(), { requestedFields: ['education'] });
+  const answer = composeDeterministically({ userQuery: 'Which university did Nora attend?', plan: plan('knowledge', ['education']), evidence });
+  assert.match(answer.text, /BlueOrbit University/i);
+  assert.match(answer.text, /Bachelor of Computer Applications/i);
+  assert.doesNotMatch(answer.text, /Flutter, Firebase|OrbitPay|RAW_RESUME_MARKER/i);
+});
+
+test('supported education is never marked unavailable', () => {
+  const evidence = buildEvidence(resumeResult(), { requestedFields: ['education'] });
+  const answer = composeDeterministically({ userQuery: 'Where did Nora study?', plan: plan('knowledge', ['education']), evidence });
+  assert.ok(evidence.facts.length > 0);
+  assert.doesNotMatch(answer.text, /does not contain supported|available nahi/i);
+});
+
+test('study and attendance wording resolve to the canonical education field', () => {
+  assert.deepEqual(normalizeRequestedField('Where did this person study?').requestedFields, ['education']);
+  assert.deepEqual(normalizeRequestedField('Which university did they attend?').requestedFields, ['education']);
+});
+
+test('no final answer contains a complete raw chunk', () => {
+  const education = composeDeterministically({ userQuery: 'Education', plan: plan('knowledge', ['education']), evidence: buildEvidence(resumeResult(), { requestedFields: ['education'] }) });
+  const summary = composeDeterministically({ userQuery: 'Profile', plan: plan('knowledge', ['summary']), evidence: buildEvidence(resumeResult(), { requestedFields: ['summary'] }) });
+  assert.ok(education.text.length < rawResume.length / 2);
+  assert.ok(summary.text.length < rawResume.length / 2);
+  assert.doesNotMatch(`${education.text}\n${summary.text}`, /RAW_RESUME_MARKER/);
 });

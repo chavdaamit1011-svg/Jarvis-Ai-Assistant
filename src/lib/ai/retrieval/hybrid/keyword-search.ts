@@ -33,6 +33,6 @@ export async function keywordSearch(input: HybridRetrievalInput, queries: string
     }).filter((match) => match.score > 0);
     if (!matches.length) return [];
     const best = matches.reduce((winner, match) => match.score > winner.score ? match : winner);
-    return [{ kind: 'chunk' as const, documentId: String(chunk.documentId), chunkId: String(chunk._id), documentTitle: chunk.metadata?.documentTitle || titleById.get(String(chunk.documentId)), content: chunk.content, keywordScore: best.score, queryMatchCount: matches.length, matchedQueries: matches.map((match) => match.query) }];
+    return [{ kind: 'chunk' as const, documentId: String(chunk.documentId), chunkId: String(chunk._id), documentTitle: chunk.metadata?.documentTitle || titleById.get(String(chunk.documentId)), chunkIndex: chunk.chunkIndex, content: chunk.content, keywordScore: best.score, queryMatchCount: matches.length, matchedQueries: matches.map((match) => match.query) }];
   });
 }

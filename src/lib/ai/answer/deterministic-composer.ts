@@ -3,6 +3,7 @@ import type { AnswerInput, ComposedAnswer } from './answer-types';
 const EXACT_FIELDS = new Set(['linkedin_url', 'github_url', 'portfolio_url', 'website_url', 'email', 'phone']);
 const EDUCATION = /\b(?:education|university|college|bachelor|master|degree|qualification|school)\b/i;
 const PROJECT = /\b(?:project|e-commerce|ecommerce|application|app|website|store|built|created|developed)\b/i;
+const MAX_COMPOSABLE_FACT_LENGTH = 280;
 
 function isHinglish(language: string) { return /hinglish|hindi|gujarati/i.test(language); }
 function unavailable(language: string, field: string) {
@@ -10,7 +11,7 @@ function unavailable(language: string, field: string) {
   if (isHinglish(language)) return `Uploaded knowledge mein ${label === 'project' ? 'project' : label || 'requested information'} ke liye supported information available nahi hai.`;
   return `Uploaded knowledge does not contain supported ${label} information for this entity.`;
 }
-function unique(values: string[]) { return [...new Map(values.map((value) => [value.toLowerCase(), value])).values()]; }
+function unique(values: string[]) { return [...new Map(values.filter((value) => value.length <= MAX_COMPOSABLE_FACT_LENGTH).map((value) => [value.toLowerCase(), value])).values()]; }
 function factsFor(input: AnswerInput) {
   const field = input.plan.requestedFields[0] ?? '';
   if (field === 'projects') return input.evidence.facts.filter((fact) => PROJECT.test(fact));

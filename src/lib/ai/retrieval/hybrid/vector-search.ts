@@ -38,6 +38,7 @@ export async function vectorSearch(input: HybridRetrievalInput, queries: string[
       documentId: String(chunk.documentId),
       chunkId: String(chunk._id),
       documentTitle: chunk.metadata?.documentTitle || titleById.get(String(chunk.documentId)),
+      chunkIndex: chunk.chunkIndex,
       content: chunk.content,
       vectorScore: best.score,
       queryMatchCount: matches.filter((match) => match.score >= RAG_CONFIG.minSimilarity).length,

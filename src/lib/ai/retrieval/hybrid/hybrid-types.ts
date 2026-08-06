@@ -18,6 +18,7 @@ export type HybridCandidate = {
   entityId?: string;
   factId?: string;
   documentTitle?: string;
+  chunkIndex?: number;
   content?: string;
   predicate?: string;
   value?: unknown;

@@ -20,6 +20,13 @@ import { buildClarification, detectAmbiguity } from '@/lib/ai/clarification';
 import { lookupKnowledgeGraph } from '@/lib/ai/knowledge-graph';
 import { evaluateKnowledge } from '@/lib/ai/evaluation';
 import { routeCapability, resolveEntityBeforeRouting } from '@/lib/ai/brain';
+import { createPlan } from '@/lib/ai/brain/planner';
+import { resolveConversationContext } from '@/lib/ai/brain/context-resolver';
+import { createDefaultCapabilityRegistry } from '@/lib/ai/brain/executor';
+import { runEvidencePipeline } from '@/lib/ai/brain/pipeline';
+import { rewriteKnowledgeQuery } from '@/lib/ai/query-rewriter';
+import { retrieveHybridCandidates } from '@/lib/ai/retrieval/hybrid';
+import { rerankKnowledgeChunks } from '@/lib/ai/reranker';
 import { toolRegistry } from '@/lib/ai/tools';
 import { createTrace } from '@/lib/ai/trace';
 import { runShadowComparison, type ShadowComparison } from '@/lib/ai/brain/shadow-mode';
@@ -104,20 +111,37 @@ export async function POST(req: Request) {
   }
 
   const latestUserQuestion = [...parsed.data.messages].reverse().find((message) => message.role === 'user')?.content;
+  const v2Enabled = process.env.AI_BRAIN_V2_ENABLED === 'true';
   let contextResolvedQuery = latestUserQuestion ?? '';
   let activeEntityBefore: ActiveConversationEntity | null = null;
   let activeEntityAfter: ActiveConversationEntity | null = null;
   let referenceResolution: ReturnType<typeof conversationEntityManager.resolvePronouns> | null = null;
-  if (process.env.AI_BRAIN_SHADOW_MODE === 'true' && latestUserQuestion && parsed.data.conversationId && mongoose.isValidObjectId(parsed.data.conversationId)) {
+  if ((process.env.AI_BRAIN_SHADOW_MODE === 'true' || v2Enabled) && latestUserQuestion && parsed.data.conversationId && mongoose.isValidObjectId(parsed.data.conversationId)) {
     try {
       const stored = await Conversation.findById(parsed.data.conversationId).select('activeEntityId activeEntityName activeEntityType').lean();
       if (stored?.activeEntityName && stored.activeEntityType) conversationEntityManager.setActiveEntity(parsed.data.conversationId, { id: stored.activeEntityId ?? undefined, name: stored.activeEntityName, type: stored.activeEntityType as typeof activeEntityBefore extends null ? never : NonNullable<typeof activeEntityBefore>['type'] });
       activeEntityBefore = conversationEntityManager.getActiveEntity(parsed.data.conversationId);
       referenceResolution = conversationEntityManager.resolvePronouns(parsed.data.conversationId, latestUserQuestion);
       if (referenceResolution.resolved) contextResolvedQuery = referenceResolution.resolvedQuery;
+      if (v2Enabled) {
+        const resolvedContext = resolveConversationContext({
+          currentQuery: latestUserQuestion,
+          recentMessages: parsed.data.messages.slice(0, -1).slice(-6),
+          activeEntities: activeEntityBefore ? [{ type: activeEntityBefore.type, name: activeEntityBefore.name, id: activeEntityBefore.id }] : [],
+        });
+        if (!resolvedContext.requiresClarification && resolvedContext.standaloneQuery.trim()) contextResolvedQuery = resolvedContext.standaloneQuery;
+      }
     } catch {
       // Context metadata never blocks the existing chat request.
     }
+  }
+  if (v2Enabled && latestUserQuestion && !referenceResolution) {
+    const resolvedContext = resolveConversationContext({
+      currentQuery: latestUserQuestion,
+      recentMessages: parsed.data.messages.slice(0, -1).slice(-6),
+      activeEntities: [],
+    });
+    if (!resolvedContext.requiresClarification && resolvedContext.standaloneQuery.trim()) contextResolvedQuery = resolvedContext.standaloneQuery;
   }
   const language = detectResponseLanguage(latestUserQuestion ?? '');
   const shadowModeEnabled = process.env.AI_BRAIN_SHADOW_MODE === 'true';
@@ -154,11 +178,12 @@ export async function POST(req: Request) {
     return createAnswerHeaders(tracedMetadata, sources);
   };
   const requestedStrategy: AnswerStrategy = parsed.data.chatMode ?? parsed.data.answerStrategy ?? (parsed.data.knowledgeMode === 'off' ? 'normal' : 'knowledge_hybrid');
+  let v2KnowledgeNoEvidence = false;
   let preRoutingEntity: Awaited<ReturnType<typeof resolveEntityBeforeRouting>> | null = null;
   if (latestUserQuestion) {
     let capabilityEntity = { matches: [] as Array<{ type: string; name: string; id?:string }>, ambiguous: false };
     try {
-      const graphResolved = await resolveEntityBeforeRouting(latestUserQuestion);
+      const graphResolved = await resolveEntityBeforeRouting(v2Enabled ? contextResolvedQuery : latestUserQuestion);
       preRoutingEntity = graphResolved;
       capabilityEntity = {
         matches: graphResolved.matches.map((match) => ({ type: match.type, name: match.name, id: match.id })),
@@ -201,7 +226,7 @@ export async function POST(req: Request) {
           reason: preRoutingEntity.reason,
         });
       }
-      if (process.env.AI_BRAIN_SHADOW_MODE === 'true' && parsed.data.conversationId && preRoutingEntity.route === 'knowledge' && preRoutingEntity.entity) {
+      if ((process.env.AI_BRAIN_SHADOW_MODE === 'true' || v2Enabled) && parsed.data.conversationId && preRoutingEntity.route === 'knowledge' && preRoutingEntity.entity) {
         const entity = conversationEntityManager.setActiveEntity(parsed.data.conversationId, { id: preRoutingEntity.entityId ?? undefined, name: preRoutingEntity.entity, type: capabilityEntity.matches[0]?.type === 'organization' ? 'organization' : capabilityEntity.matches[0]?.type === 'project' ? 'project' : capabilityEntity.matches[0]?.type === 'product' ? 'product' : 'person' });
         activeEntityAfter = entity;
         if (mongoose.isValidObjectId(parsed.data.conversationId)) await Conversation.findByIdAndUpdate(parsed.data.conversationId, { $set: { activeEntityId: entity.id ?? null, activeEntityName: entity.name, activeEntityType: entity.type, updatedAt: new Date() } });
@@ -211,6 +236,129 @@ export async function POST(req: Request) {
     }
     const capability = await routeCapability(latestUserQuestion, { knowledgeMode: requestedStrategy, entityMatches: capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous });
     if(traceSession)await traceSession.update({routing:{capability:capability.capability,reasonCode:capability.reasonCode,confidence:capability.confidence,deterministicOrAI:capability.fallbackUsed?'fallback':'deterministic'},entityResolution:{candidates:capabilityEntity.matches,selectedEntity:capability.matchedEntity,matchType:capability.entityMatchType,confidence:capability.confidence}});
+    if (v2Enabled && requestedStrategy !== 'normal') {
+      const plannerEntityHints = capabilityEntity.matches.map((match) => ({ type: match.type, name: match.name, id: match.id }));
+      const plan = await createPlan({
+        query: contextResolvedQuery,
+        entityHints: plannerEntityHints,
+        entityAmbiguous: capabilityEntity.ambiguous,
+        responseLanguage: language.responseLanguage,
+      });
+      const executionPlan = preRoutingEntity?.route === 'knowledge' && plan.capability !== 'knowledge'
+        ? { ...plan, capability: 'knowledge' as const, requiresKnowledge: true, confidence: Math.max(plan.confidence, preRoutingEntity.confidence) }
+        : plan;
+      if (traceSession) await traceSession.update({
+        queryUnderstanding: {
+          normalizedQuery: executionPlan.normalizedQuery,
+          intent: executionPlan.operation,
+          entities: executionPlan.entities.map((entity) => entity.name),
+          requestedFields: executionPlan.requestedFields,
+          ambiguityDetected: capabilityEntity.ambiguous,
+          detectedLanguage: language.detectedLanguage,
+          responseLanguage: executionPlan.responseLanguage,
+          languageConfidence: language.confidence,
+          formattingPath: 'v2-planner',
+        },
+        routing: { capability: executionPlan.capability, reasonCode: executionPlan.plannerReasons.join(','), confidence: executionPlan.confidence, deterministicOrAI: executionPlan.plannerMethod },
+        contextResolution: { originalQuery: latestUserQuestion, resolvedQuery: contextResolvedQuery, activeEntityBefore, referenceDetected: Boolean(referenceResolution?.resolved), resolvedReference: referenceResolution?.entity?.name ?? null, activeEntityAfter },
+      });
+      if (executionPlan.capability === 'clarification' || capabilityEntity.ambiguous) {
+        return new Response(executionPlan.clarificationQuestion ?? formatKnowledgeFacts({ language: language.detectedLanguage, kind: 'clarification' }), {
+          headers: answerHeaders({ answerSource: 'clarification', usedFallback: false, confidence: executionPlan.confidence, evaluationDecision: 'clarify' }),
+        });
+      }
+      if (executionPlan.capability === 'knowledge') {
+        try {
+          const entity = preRoutingEntity?.route === 'knowledge' && preRoutingEntity.entity
+            ? { id: preRoutingEntity.entityId ?? undefined, name: preRoutingEntity.entity, type: capabilityEntity.matches[0]?.type }
+            : undefined;
+          const rewrite = await rewriteKnowledgeQuery({
+            originalQuery: contextResolvedQuery,
+            resolvedEntity: entity?.name ?? null,
+            requestedFields: executionPlan.requestedFields,
+          });
+          const retrieval = await retrieveHybridCandidates({
+            primaryQuery: rewrite.primaryQuery,
+            alternateQueries: rewrite.alternateQueries,
+            semanticConcepts: rewrite.semanticConcepts,
+            exactTerms: rewrite.exactTerms,
+            entityId: entity?.id,
+            requestedFields: executionPlan.requestedFields,
+            topK: 12,
+            visibility: parsed.data.knowledgeMode === 'private' ? 'private' : 'public',
+          });
+          const reranked = await rerankKnowledgeChunks({
+            originalQuery: latestUserQuestion,
+            resolvedQuery: contextResolvedQuery,
+            entity: entity?.name ? entity : null,
+            retrievedChunks: retrieval.candidates.map((candidate) => ({
+              chunkId: candidate.chunkId ?? candidate.factId ?? candidate.entityId ?? '',
+              documentId: candidate.documentId ?? '',
+              text: candidate.content ?? (typeof candidate.value === 'string' ? candidate.value : ''),
+              metadata: { documentTitle: candidate.documentTitle, chunkIndex: candidate.chunkIndex, predicate: candidate.predicate },
+              vectorScore: candidate.vectorScore,
+              keywordScore: candidate.keywordScore,
+              exactScore: candidate.exactScore,
+              matchedQueries: candidate.matchedQueries,
+            })).filter((chunk) => chunk.chunkId && chunk.documentId && chunk.text),
+          });
+          const sources = reranked.rankedChunks.map((chunk) => ({ documentId: chunk.documentId, chunkId: chunk.chunkId, documentTitle: typeof chunk.metadata?.documentTitle === 'string' ? chunk.metadata.documentTitle : 'Knowledge document', chunkIndex: typeof chunk.metadata?.chunkIndex === 'number' ? chunk.metadata.chunkIndex : 0, content: chunk.text }));
+          if (traceSession) await traceSession.update({
+            retrieval: {
+              attempted: true,
+              inputQueries: rewrite.trace.rewrittenQueries,
+              requestedFields: executionPlan.requestedFields,
+              retrievedCandidates: retrieval.candidates.map((candidate) => ({ chunkId: candidate.chunkId, factId: candidate.factId, score: candidate.score, matchedQueries: candidate.matchedQueries })),
+              rerankedChunks: reranked.rankedChunks.map((chunk) => ({ chunkId: chunk.chunkId, score: chunk.rerankerScore, reason: chunk.rankingReason })),
+              candidateCount: retrieval.candidates.length,
+              selectedChunkCount: reranked.rankedChunks.length,
+              threshold: null,
+            },
+          });
+          if (!reranked.rankedChunks.length) {
+            if (traceSession) await traceSession.update({ generation: { provider: 'none', answerSource: 'knowledge', fallbackUsed: requestedStrategy === 'knowledge_hybrid', finalCapability: 'knowledge', fallbackReason: 'zero_supported_evidence' } });
+            if (requestedStrategy === 'knowledge_strict') return new Response('Uploaded knowledge does not contain supported information for this request.', { headers: answerHeaders({ answerSource: 'rag', usedFallback: false, confidence: 0, evaluationDecision: 'insufficient' }) });
+            v2KnowledgeNoEvidence = true;
+          } else {
+            const registry = createDefaultCapabilityRegistry({
+              knowledge: async () => ({
+                status: 'success' as const,
+                capability: 'knowledge' as const,
+                answerSource: 'rag' as const,
+                data: null,
+                supportedFacts: reranked.rankedChunks.map((chunk) => chunk.text),
+                sources,
+                conflicts: [],
+                fallbackAllowed: false,
+                fallbackReason: null,
+                errorCode: null,
+                traceMetadata: { confidence: reranked.confidence, responseLanguage: executionPlan.responseLanguage, requestedFields: executionPlan.requestedFields, rewrittenQueries: rewrite.trace.rewrittenQueries, supportedEvidenceCount: reranked.rankedChunks.length },
+              }),
+            });
+            const pipeline = await runEvidencePipeline({ userQuery: contextResolvedQuery, plan: executionPlan, context: { requestId: traceSession?.trace.requestId ?? crypto.randomUUID(), conversationId: parsed.data.conversationId, assistantMode: requestedStrategy, abortSignal: req.signal }, registry });
+            const supportedEvidence = pipeline.evidence?.facts ?? [];
+            if (traceSession) await traceSession.update({
+              evaluation: { decision: pipeline.validationResult?.decision ?? pipeline.status, confidence: pipeline.validationResult?.confidence ?? reranked.confidence, rejectedFacts: pipeline.validationResult?.unsupportedClaims ?? [], conflicts: pipeline.validationResult?.issues.filter((issue) => issue.code.includes('CONFLICT')) ?? [], supportedEvidenceCount: supportedEvidence.length },
+              generation: { provider: 'deterministic', answerSource: 'rag', fallbackUsed: false, finalCapability: 'knowledge', fallbackReason: null },
+            });
+            // A validator rejection with evidence is not permission to use
+            // general AI. Return the safe knowledge-unavailable response.
+            const validation = pipeline.validationResult;
+            if (pipeline.status === 'success' && validation && validation.decision !== 'reject' && supportedEvidence.length) {
+              return new Response(pipeline.finalCandidateAnswer, {
+                headers: answerHeaders({ answerSource: 'rag', usedFallback: false, confidence: validation.confidence, evaluationDecision: 'answer' }, sources.map((source) => ({ documentTitle: source.documentTitle, chunkIndex: source.chunkIndex, score: 1 }))),
+              });
+            }
+            return new Response('Uploaded knowledge does not contain supported information for this request.', {
+              headers: answerHeaders({ answerSource: 'rag', usedFallback: false, confidence: pipeline.validationResult?.confidence ?? reranked.confidence, evaluationDecision: 'insufficient' }, sources.map((source) => ({ documentTitle: source.documentTitle, chunkIndex: source.chunkIndex, score: 1 }))),
+            });
+          }
+        } catch (error) {
+          if (traceSession) await traceSession.update({ errors: [...traceSession.trace.errors, `v2-knowledge: ${error instanceof Error ? error.message.slice(0, 120) : 'failed'}`] });
+          return new Response('Uploaded knowledge could not be searched safely. Please try again.', { headers: answerHeaders({ answerSource: 'rag', usedFallback: false, confidence: 0, evaluationDecision: 'insufficient' }) });
+        }
+      }
+    }
     if (shadowModeEnabled && traceSession) {
       const recentMessages = parsed.data.messages.slice(0, -1).slice(-6);
       shadowComparison = runShadowComparison({ query: contextResolvedQuery, context: { requestId: traceSession.trace.requestId, conversationId: parsed.data.conversationId, assistantMode: requestedStrategy, abortSignal: req.signal }, oldFlow: { capability: capability.capability, entity: capability.matchedEntity, requestedFields: capability.requestedOperation ? [capability.requestedOperation] : [], fallbackUsed: capability.fallbackUsed }, entityHints: activeEntityBefore ? [{ type: activeEntityBefore.type, name: activeEntityBefore.name, id: activeEntityBefore.id }] : capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous, responseLanguage: language.responseLanguage, recentMessages }).catch((error: unknown) => Promise.reject(error));
@@ -245,9 +393,12 @@ export async function POST(req: Request) {
     });
     system += `\n\nRESPONSE LANGUAGE:\n- Respond in ${language.responseLanguage}.\n- Preserve names, URLs, emails, code, product names, and technology names exactly.\n- If the question is mixed-language, follow its dominant user language.`;
     let sources: Source[] = [];
-    let answerMetadata: AnswerMetadata = { answerSource: 'general-ai', usedFallback: false };
+    let answerMetadata: AnswerMetadata = { answerSource: 'general-ai', usedFallback: v2KnowledgeNoEvidence };
     let messages = parsed.data.messages;
-    const answerStrategy = requestedStrategy;
+    // V2 has already attempted the complete knowledge pipeline above. A
+    // hybrid fallback may use normal Groq only after zero supported evidence;
+    // it must never re-enter the legacy knowledge retriever.
+    const answerStrategy: AnswerStrategy = v2Enabled ? 'normal' : requestedStrategy;
     if (answerStrategy !== 'normal') {
       try {
         const lastUserIndex = [...messages].map((message) => message.role).lastIndexOf('user');
