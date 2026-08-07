@@ -1,7 +1,8 @@
 import type { DetectedResponseLanguage } from '@/lib/ai/response-language';
+import { normalizeText } from '@/lib/ai/brain/normalizer/normalize-text';
 
 type FactRecord = { _id: unknown; entityId: unknown; field: string; value: unknown; sourceDocumentId?: unknown; documentId: unknown; sourceChunkId?: unknown; chunkId: unknown; sourceSectionId?: unknown; sourceText: string; confidence: number; isConflicting?: boolean; status?: string };
-type RelationshipRecord = { _id: unknown; subjectEntityId?: unknown; sourceEntityId: unknown; relation?: string; relationshipType: string; objectEntityId?: unknown; targetEntityId: unknown; sourceDocumentId?: unknown; documentId: unknown; sourceChunkId?: unknown; chunkId: unknown; sourceText: string; confidence: number; isConflicting?: boolean };
+type RelationshipRecord = { _id: unknown; subjectEntityId?: unknown; sourceEntityId: unknown; relation?: string; relationshipType: string; objectEntityId?: unknown; targetEntityId: unknown; sourceDocumentId?: unknown; documentId: unknown; sourceChunkId?: unknown; chunkId: unknown; sourceText: string; confidence: number; isConflicting?: boolean; qualifiers?: Record<string, unknown> };
 type EntityRecord = { _id: unknown; canonicalName: string; entityType: string };
 
 export type StructuredSource = { documentId: string; chunkId: string; documentTitle: string; chunkIndex: number; score: number };
@@ -21,6 +22,13 @@ export type StructuredFactQueryResult = {
   notAvailableReason: string | null;
   finalUnavailable: boolean;
   entitySpecific: boolean;
+  semanticConcept: string;
+  subfield: string | null;
+  filters: Record<string, string | boolean | string[]>;
+  projection: string[];
+  factsBeforeFiltering: number;
+  factsAfterFiltering: number;
+  finalSelectedFacts: string[];
 };
 
 type RecordBundle = { entity: EntityRecord | null; facts: FactRecord[]; relationships: RelationshipRecord[]; targets: EntityRecord[]; targetFacts: FactRecord[]; sources: StructuredSource[] };
@@ -31,6 +39,53 @@ const unique = <T>(values: T[]) => [...new Set(values)];
 const id = (value: unknown) => String(value ?? '');
 const fieldValues = (facts: FactRecord[], field: string) => facts.filter((fact) => fact.field === field).map((fact) => text(fact.value)).filter(Boolean);
 const sourceFor = (record: FactRecord | RelationshipRecord) => ({ documentId: id(record.sourceDocumentId ?? record.documentId), chunkId: id(record.sourceChunkId ?? record.chunkId) });
+
+type StructuredScope = {
+  semanticConcept: string;
+  subfield: 'backend' | 'frontend' | 'languages' | null;
+  operation: StructuredFactQueryResult['operation'];
+  filters: Record<string, string | boolean | string[]>;
+  projection: string[];
+};
+
+function scopeFor(query: string, fields: string[]): StructuredScope {
+  const value = query.toLowerCase();
+  const semanticConcept = intentFor(query, fields);
+  const subfield = /\b(?:backend|server[ -]?side|server)\b/i.test(query)
+    ? 'backend'
+    : /\b(?:frontend|front[ -]?end|client[ -]?side|ui)\b/i.test(query)
+      ? 'frontend'
+      : /\b(?:languages? known|programming languages?|kaunsi languages?|konsi languages?)\b/i.test(query)
+        ? 'languages'
+        : null;
+  const wantsCurrent = /\b(?:current(?:ly)?|now|present|abhi|haal(?:\s+me)?|aajkal)\b/i.test(query);
+  const wantsPursuing = /\b(?:pursuing|pursue|attending|ongoing|chal rahi|kar raha|kar rahi)\b/i.test(query);
+  const wantsCompleted = /\b(?:completed|complete|graduated|finished|pursued|pass out|complete ki|complete kiya)\b/i.test(query);
+  const filters: StructuredScope['filters'] = {};
+  if (semanticConcept === 'education' && (wantsCurrent || wantsPursuing)) filters.status = ['pursuing', 'active', 'attending'];
+  else if (semanticConcept === 'education' && wantsCompleted) filters.status = 'completed';
+  if (subfield) filters.category = subfield;
+  const degreeMention = value.match(/\b(?:b\.?com|bachelor\s+of\s+commerce|m\.?c\.?a|master\s+of\s+computer\s+application)\b/i)?.[0];
+  if (degreeMention) filters.degree = degreeMention;
+  const projection = semanticConcept === 'education'
+    ? ['education.degree', 'education.degree_alias', 'education.institution', 'education.start_year', 'education.end_year', 'education.status', 'education.grade']
+    : semanticConcept === 'technology'
+      ? subfield ? [`technology.${subfield}`] : ['technology']
+      : semanticConcept === 'location'
+        ? ['location.city', 'location.state', 'location.address', 'location.country']
+        : semanticConcept === 'projects'
+          ? ['project']
+          : [];
+  return { semanticConcept, subfield, operation: operationFor(query), filters, projection };
+}
+
+function relationshipTechnologyCategory(relationship: RelationshipRecord) {
+  const source = `${relationship.sourceText} ${JSON.stringify(relationship.qualifiers ?? {})}`.toLowerCase();
+  if (/\b(?:front[ -]?end|client[ -]?side|ui)\b/.test(source)) return 'frontend';
+  if (/\b(?:back[ -]?end|server[ -]?side|database|api)\b/.test(source)) return 'backend';
+  if (/\b(?:languages? known|programming languages?)\b/.test(source)) return 'languages';
+  return null;
+}
 
 function operationFor(query: string): StructuredFactQueryResult['operation'] {
   if (/\b(?:how many|total|count|kitn[aei]|ketl[ao])\b/i.test(query)) return 'count';
@@ -71,11 +126,13 @@ function evidence(records: FactRecord[]) {
 
 function answerFor(input: { query: string; fields: string[]; language: DetectedResponseLanguage; bundle: RecordBundle }): Omit<StructuredFactQueryResult, 'sources'> {
   const { query, fields, language, bundle } = input;
-  const intent = intentFor(query, fields);
-  const operation = operationFor(query);
+  const normalizedQuery = normalizeText(query).cleanedQuery;
+  const scope = scopeFor(normalizedQuery, fields);
+  const intent = scope.semanticConcept;
+  const operation = scope.operation;
   const facts = bundle.facts.filter((fact) => fact.status !== 'rejected' && !fact.isConflicting);
   const relationships = bundle.relationships.filter((relationship) => !relationship.isConflicting);
-  const base = { operation, requestedFields: fields, structuredFactsFound: facts.length, relationshipsFound: relationships.length, explicitFacts: [] as StructuredEvidence[], inferredFacts: [] as string[], sources: [] as StructuredSource[], structuredAnswerUsed: false, ragFallbackUsed: false, notAvailableReason: null as string | null, finalUnavailable: false, entitySpecific: Boolean(bundle.entity) };
+  const base = { operation, requestedFields: fields, structuredFactsFound: facts.length, relationshipsFound: relationships.length, explicitFacts: [] as StructuredEvidence[], inferredFacts: [] as string[], sources: [] as StructuredSource[], structuredAnswerUsed: false, ragFallbackUsed: false, notAvailableReason: null as string | null, finalUnavailable: false, entitySpecific: Boolean(bundle.entity), semanticConcept: intent, subfield: scope.subfield, filters: scope.filters, projection: scope.projection, factsBeforeFiltering: facts.length, factsAfterFiltering: 0, finalSelectedFacts: [] as string[] };
   const name = bundle.entity?.canonicalName ?? 'The entity';
 
   if (!bundle.entity) return { ...base, status: 'none' as const, notAvailableReason: 'No resolved entity was supplied.' };
@@ -133,7 +190,7 @@ function answerFor(input: { query: string; fields: string[]; language: DetectedR
       if (course) sentences.push(`Training: ${[course, trainingInstitution, trainingStatus].filter(Boolean).join(' — ')}.`);
     }
     if (!profileFacts.length && !technologies.length && !projects.length) return { ...base, status: 'none' as const, notAvailableReason: unavailableReason(intent) };
-    return { ...base, status: 'answer' as const, answer: sentences.join('\n'), explicitFacts: evidence(profileFacts), structuredAnswerUsed: true };
+    return { ...base, status: 'answer' as const, answer: sentences.join('\n'), explicitFacts: evidence(profileFacts), structuredAnswerUsed: true, factsAfterFiltering: profileFacts.length, finalSelectedFacts: profileFacts.map((fact) => `${fact.field}: ${text(fact.value)}`) };
   }
 
   if (intent === 'location') {
@@ -142,7 +199,7 @@ function answerFor(input: { query: string; fields: string[]; language: DetectedR
     if (!selected.length) return { ...base, status: 'none' as const, notAvailableReason: unavailableReason(intent) };
     const place = [city, state].filter(Boolean).join(', ') || join(selected.map((fact) => text(fact.value)), language);
     const answer = language === 'english' ? `${name}'s stored location is ${place}.` : language === 'gujarati_roman' ? `${name} ni stored location ${place} chhe.` : `${name} ki stored location ${place} hai.`;
-    return { ...base, status: 'answer' as const, answer, explicitFacts: evidence(selected), structuredAnswerUsed: true };
+    return { ...base, status: 'answer' as const, answer, explicitFacts: evidence(selected), structuredAnswerUsed: true, factsAfterFiltering: selected.length, finalSelectedFacts: selected.map((fact) => `${fact.field}: ${text(fact.value)}`) };
   }
 
   if (intent === 'education') {
@@ -151,7 +208,7 @@ function answerFor(input: { query: string; fields: string[]; language: DetectedR
     const groups = new Map<string, FactRecord[]>();
     for (const fact of selected) { const key = id(fact.sourceSectionId) || id(fact._id); groups.set(key, [...(groups.get(key) ?? []), fact]); }
     let entries = [...groups.values()];
-    const degreeMention = query.match(/\b(?:b\.?com|bachelor\s+of\s+commerce|m\.?c\.?a|master\s+of\s+computer\s+ap+lication)\b/i)?.[0]?.toLowerCase();
+    const degreeMention = typeof scope.filters.degree === 'string' ? scope.filters.degree.toLowerCase() : undefined;
     if (degreeMention) {
       const normalizedDegree = degreeMention.replace(/[^\p{L}\p{N}]/gu, '');
       entries = entries.filter((entry) => entry.some((fact) => {
@@ -159,6 +216,8 @@ function answerFor(input: { query: string; fields: string[]; language: DetectedR
         return normalizedValue.includes(normalizedDegree) || normalizedDegree.includes(normalizedValue);
       }));
     }
+    const statuses = Array.isArray(scope.filters.status) ? scope.filters.status : scope.filters.status ? [scope.filters.status] : [];
+    if (statuses.length) entries = entries.filter((entry) => entry.some((fact) => fact.field === 'education.status' && statuses.includes(text(fact.value).toLowerCase())));
     if (!entries.length) return { ...base, status: 'none' as const, notAvailableReason: unavailableReason(intent) };
     const selectedFacts = entries.flat();
     const summaries = entries.map((entry) => {
@@ -176,7 +235,7 @@ function answerFor(input: { query: string; fields: string[]; language: DetectedR
     else if (onlyPeriod) answer = summaries.map((item) => language === 'english' ? `${name}: ${item}` : `${name}: ${item}`).join('\n');
     else answer = language === 'english' ? `${name}'s education:\n${summaries.map((item) => `- ${item}`).join('\n')}` : `${name} ki education:\n${summaries.map((item) => `- ${item}`).join('\n')}`;
     const inferredFacts = /\b(?:field|domain|stream|related)\b/i.test(query) && selectedFacts.some((fact) => /^MCA$/i.test(text(fact.value))) ? ['MCA is safely categorized as a Computer Applications / IT-related field.'] : [];
-    return { ...base, status: 'answer' as const, answer, explicitFacts: evidence(selectedFacts), inferredFacts, structuredAnswerUsed: true };
+    return { ...base, status: 'answer' as const, answer, explicitFacts: evidence(selectedFacts), inferredFacts, structuredAnswerUsed: true, factsAfterFiltering: selectedFacts.length, finalSelectedFacts: selectedFacts.map((fact) => `${fact.field}: ${text(fact.value)}`) };
   }
 
   if (intent === 'training') {
@@ -185,7 +244,7 @@ function answerFor(input: { query: string; fields: string[]; language: DetectedR
     const course = fieldValues(selected, 'training.course')[0] ?? fieldValues(selected, 'certification')[0];
     const institution = fieldValues(selected, 'training.institution')[0]; const status = fieldValues(selected, 'training.status')[0];
     const answer = language === 'english' ? `${name}'s supported training: ${[course, institution, status].filter(Boolean).join(' — ')}.` : `${name} ki supported training: ${[course, institution, status].filter(Boolean).join(' — ')}.`;
-    return { ...base, status: 'answer' as const, answer, explicitFacts: evidence(selected), structuredAnswerUsed: true };
+    return { ...base, status: 'answer' as const, answer, explicitFacts: evidence(selected), structuredAnswerUsed: true, factsAfterFiltering: selected.length, finalSelectedFacts: selected.map((fact) => `${fact.field}: ${text(fact.value)}`) };
   }
 
   if (intent === 'projects') {
@@ -203,23 +262,26 @@ function answerFor(input: { query: string; fields: string[]; language: DetectedR
     const answer = operation === 'count'
       ? language === 'english' ? `${name} has ${projects.length} supported projects:\n${list.join('\n')}` : `${name} ke ${projects.length} supported projects hain:\n${list.join('\n')}`
       : language === 'english' ? `${name}'s supported projects:\n${list.join('\n')}` : `${name} ke supported projects:\n${list.join('\n')}`;
-    return { ...base, status: operation === 'descriptive' ? 'partial' as const : 'answer' as const, answer, explicitFacts: evidence(projectFacts), structuredAnswerUsed: operation !== 'descriptive', ragFallbackUsed: operation === 'descriptive', notAvailableReason: operation === 'descriptive' ? 'Project descriptions may need supporting chunk context.' : null };
+    return { ...base, status: operation === 'descriptive' ? 'partial' as const : 'answer' as const, answer, explicitFacts: evidence(projectFacts), structuredAnswerUsed: operation !== 'descriptive', ragFallbackUsed: operation === 'descriptive', notAvailableReason: operation === 'descriptive' ? 'Project descriptions may need supporting chunk context.' : null, factsAfterFiltering: projectFacts.length, finalSelectedFacts: projectFacts.map((fact) => `${fact.field}: ${text(fact.value)}`) };
   }
 
   if (intent === 'technology') {
     const techRelations = relationships.filter((relationship) => (relationship.relation ?? relationship.relationshipType) === 'USES_TECHNOLOGY');
-    const techIds = new Set(techRelations.map((relationship) => id(relationship.objectEntityId ?? relationship.targetEntityId)));
+    const scopedRelations = scope.subfield ? techRelations.filter((relationship) => relationshipTechnologyCategory(relationship) === scope.subfield) : techRelations;
+    const techIds = new Set(scopedRelations.map((relationship) => id(relationship.objectEntityId ?? relationship.targetEntityId)));
     const names = bundle.targets.filter((target) => techIds.has(id(target._id)) && target.entityType === 'technology').map((target) => target.canonicalName);
     if (!names.length) return { ...base, status: 'none' as const, notAvailableReason: unavailableReason(intent) };
-    const answer = language === 'english' ? `${name} works with ${join(names, language)}.` : `${name} ${join(names, language)} par kaam karte hain.`;
-    return { ...base, status: 'answer' as const, answer, explicitFacts: [], structuredAnswerUsed: true };
+    const label = scope.subfield ? `${scope.subfield} technologies` : 'technologies';
+    const answer = language === 'english' ? `${name}'s ${label}: ${join(names, language)}.` : `${name} ki ${label}: ${join(names, language)}.`;
+    const relationEvidence = scopedRelations.map((relationship) => ({ id: id(relationship._id), field: `technology.${scope.subfield ?? 'general'}`, value: bundle.targets.find((target) => id(target._id) === id(relationship.objectEntityId ?? relationship.targetEntityId))?.canonicalName ?? '', sourceDocumentId: id(relationship.sourceDocumentId ?? relationship.documentId), sourceChunkId: id(relationship.sourceChunkId ?? relationship.chunkId), sourceText: relationship.sourceText, confidence: relationship.confidence, explicit: true }));
+    return { ...base, status: 'answer' as const, answer, explicitFacts: relationEvidence, structuredAnswerUsed: true, factsAfterFiltering: relationEvidence.length, finalSelectedFacts: relationEvidence.map((fact) => `${fact.field}: ${fact.value}`) };
   }
 
   if (intent === 'contact') {
     const candidates = fields.length ? facts.filter((fact) => fields.includes(fact.field)) : facts.filter((fact) => /(?:email|phone|url|contact)/.test(fact.field));
     if (!candidates.length) return { ...base, status: 'none' as const, notAvailableReason: unavailableReason(intent) };
     const answer = language === 'english' ? `${name}'s supported contact details:\n${candidates.map((fact) => `- ${fact.field}: ${text(fact.value)}`).join('\n')}` : `${name} ki supported contact details:\n${candidates.map((fact) => `- ${fact.field}: ${text(fact.value)}`).join('\n')}`;
-    return { ...base, status: 'answer' as const, answer, explicitFacts: evidence(candidates), structuredAnswerUsed: true };
+    return { ...base, status: 'answer' as const, answer, explicitFacts: evidence(candidates), structuredAnswerUsed: true, factsAfterFiltering: candidates.length, finalSelectedFacts: candidates.map((fact) => `${fact.field}: ${text(fact.value)}`) };
   }
 
   return { ...base, status: 'none' as const, notAvailableReason: unavailableReason(intent) };

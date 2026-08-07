@@ -291,9 +291,16 @@ export async function POST(req: Request) {
           }));
           if (traceSession) await traceSession.update({
             structuredFactQuery: {
+              semanticConcept: structured.semanticConcept,
+              subfield: structured.subfield,
               operation: structured.operation,
               requestedFields: structured.requestedFields,
+              filters: structured.filters,
+              projection: structured.projection,
               structuredFactsFound: structured.structuredFactsFound,
+              factsBeforeFiltering: structured.factsBeforeFiltering,
+              factsAfterFiltering: structured.factsAfterFiltering,
+              finalSelectedFacts: structured.finalSelectedFacts,
               relationshipsFound: structured.relationshipsFound,
               explicitFacts: structured.explicitFacts.map((fact) => ({ id: fact.id, field: fact.field, value: fact.value, documentId: fact.sourceDocumentId, chunkId: fact.sourceChunkId, confidence: fact.confidence })),
               inferredFacts: structured.inferredFacts,
@@ -304,8 +311,15 @@ export async function POST(req: Request) {
             },
           });
           if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] structured fact query', {
+            semanticConcept: structured.semanticConcept,
+            subfield: structured.subfield,
             operation: structured.operation,
             requestedFields: structured.requestedFields,
+            filters: structured.filters,
+            projection: structured.projection,
+            factsBeforeFiltering: structured.factsBeforeFiltering,
+            factsAfterFiltering: structured.factsAfterFiltering,
+            finalSelectedFacts: structured.finalSelectedFacts,
             structuredFactsFound: structured.structuredFactsFound,
             relationshipsFound: structured.relationshipsFound,
             structuredAnswerUsed: structured.structuredAnswerUsed,

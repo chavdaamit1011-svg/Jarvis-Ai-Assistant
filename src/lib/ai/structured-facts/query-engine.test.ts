@@ -30,11 +30,29 @@ const bundle = () => ({
     { _id: 'rel-1', sourceEntityId: 'person-1', targetEntityId: 'project-1', relationshipType: 'WORKED_ON', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Built Storefront One', confidence: 1 },
     { _id: 'rel-2', sourceEntityId: 'person-1', targetEntityId: 'project-2', relationshipType: 'WORKED_ON', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Built Storefront Two', confidence: 1 },
     { _id: 'rel-3', sourceEntityId: 'person-1', targetEntityId: 'project-3', relationshipType: 'WORKED_ON', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Built Storefront Three', confidence: 1 },
+    { _id: 'tech-1', sourceEntityId: 'person-1', targetEntityId: 'tech-1', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Languages Known: JavaScript | PHP', confidence: 1 },
+    { _id: 'tech-2', sourceEntityId: 'person-1', targetEntityId: 'tech-2', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Languages Known: JavaScript | PHP', confidence: 1 },
+    { _id: 'tech-3', sourceEntityId: 'person-1', targetEntityId: 'tech-3', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Frontend: HTML | CSS | Bootstrap | React.js', confidence: 1 },
+    { _id: 'tech-4', sourceEntityId: 'person-1', targetEntityId: 'tech-4', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Frontend: HTML | CSS | Bootstrap | React.js', confidence: 1 },
+    { _id: 'tech-5', sourceEntityId: 'person-1', targetEntityId: 'tech-5', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Frontend: HTML | CSS | Bootstrap | React.js', confidence: 1 },
+    { _id: 'tech-6', sourceEntityId: 'person-1', targetEntityId: 'tech-6', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Frontend: HTML | CSS | Bootstrap | React.js', confidence: 1 },
+    { _id: 'tech-7', sourceEntityId: 'person-1', targetEntityId: 'tech-7', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Backend: Node.js | Express.js | MongoDB', confidence: 1 },
+    { _id: 'tech-8', sourceEntityId: 'person-1', targetEntityId: 'tech-8', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Backend: Node.js | Express.js | MongoDB', confidence: 1 },
+    { _id: 'tech-9', sourceEntityId: 'person-1', targetEntityId: 'tech-9', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Backend: Node.js | Express.js | MongoDB', confidence: 1 },
   ],
   targets: [
     { _id: 'project-1', canonicalName: 'Storefront One', entityType: 'project' },
     { _id: 'project-2', canonicalName: 'Storefront Two', entityType: 'project' },
     { _id: 'project-3', canonicalName: 'Storefront Three', entityType: 'project' },
+    { _id: 'tech-1', canonicalName: 'JavaScript', entityType: 'technology' },
+    { _id: 'tech-2', canonicalName: 'PHP', entityType: 'technology' },
+    { _id: 'tech-3', canonicalName: 'HTML', entityType: 'technology' },
+    { _id: 'tech-4', canonicalName: 'CSS', entityType: 'technology' },
+    { _id: 'tech-5', canonicalName: 'Bootstrap', entityType: 'technology' },
+    { _id: 'tech-6', canonicalName: 'React.js', entityType: 'technology' },
+    { _id: 'tech-7', canonicalName: 'Node.js', entityType: 'technology' },
+    { _id: 'tech-8', canonicalName: 'Express.js', entityType: 'technology' },
+    { _id: 'tech-9', canonicalName: 'MongoDB', entityType: 'technology' },
   ],
   targetFacts: [fact('description', 'A supported storefront project.')],
   sources: [],
@@ -85,4 +103,41 @@ test('uses RAG only as a partial supplement for descriptive project questions', 
   assert.equal(result.status, 'partial');
   assert.equal(result.ragFallbackUsed, true);
   assert.match(result.answer ?? '', /Storefront One/);
+});
+
+test('projects canonical subfields before composing structured technology answers', () => {
+  const backend = query('Amit ko backend me kya aata hai?', ['technologies']);
+  assert.match(backend.answer ?? '', /Node\.js, Express\.js and MongoDB/);
+  assert.doesNotMatch(backend.answer ?? '', /React\.js|JavaScript/);
+  assert.equal(backend.subfield, 'backend');
+  assert.deepEqual(backend.projection, ['technology.backend']);
+
+  const frontend = query('Amit ki frontend skills?', ['skills']);
+  assert.match(frontend.answer ?? '', /HTML, CSS, Bootstrap and React\.js/);
+  assert.doesNotMatch(frontend.answer ?? '', /Node\.js|MongoDB/);
+
+  const languages = query('Amit ko kaunsi languages aati hain?', ['skills']);
+  assert.match(languages.answer ?? '', /JavaScript and PHP/);
+  assert.doesNotMatch(languages.answer ?? '', /HTML|Node\.js/);
+});
+
+test('filters education by current and completed state before answer projection', () => {
+  const current = query('Wo abhi kaunsi degree pursue kar raha hai?', ['education']);
+  assert.match(current.answer ?? '', /Master of Computer Application/);
+  assert.doesNotMatch(current.answer ?? '', /Bachelor of Commerce/);
+  assert.deepEqual(current.filters.status, ['pursuing', 'active', 'attending']);
+
+  const completed = query('Usne kaunsi degree complete ki?', ['education']);
+  assert.match(completed.answer ?? '', /Bachelor of Commerce/);
+  assert.doesNotMatch(completed.answer ?? '', /Master of Computer Application/);
+
+  const all = query('Uski sari education batao', ['education']);
+  assert.match(all.answer ?? '', /Bachelor of Commerce/);
+  assert.match(all.answer ?? '', /Master of Computer Application/);
+});
+
+test('uses generic intent typo normalization without entity-specific question rules', () => {
+  const profile = query('whi is Example Person');
+  assert.equal(profile.status, 'answer');
+  assert.equal(profile.semanticConcept, 'profile');
 });
