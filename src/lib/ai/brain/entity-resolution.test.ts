@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { scoreEntityCandidates, selectDecisiveCandidates, type EntityCandidate } from './entity-resolution';
+import { scoreEntityCandidates, selectDecisiveCandidates, selectSubjectCandidates, type EntityCandidate } from './entity-resolution';
 
 const oneEntity: EntityCandidate[] = [{
   _id: 'one', canonicalName: 'Example Person', normalizedName: 'example person', aliases: ['Example'], entityType: 'person',
@@ -43,4 +43,16 @@ test('keeps a full-name match decisive over an unrelated fuzzy entity match', ()
     .sort((left, right) => right.score - left.score);
   assert.equal(selectDecisiveCandidates(matches).length, 1);
   assert.equal(selectDecisiveCandidates(matches)[0].entity.canonicalName, 'Example Person');
+});
+
+test('treats a unique person as the subject when a degree entity is also a filter', () => {
+  const candidates: EntityCandidate[] = [
+    { _id: 'person', canonicalName: 'Amit Chavda', normalizedName: 'amit chavda', aliases: ['Amit'], entityType: 'person' },
+    { _id: 'degree', canonicalName: 'Bachelor of Commerce', normalizedName: 'bachelor of commerce', aliases: ['B.Com'], entityType: 'other' },
+  ];
+  const matches = scoreEntityCandidates('amit ne bcom kab kiya', candidates)
+    .filter((item) => item.score >= 0.85)
+    .sort((left, right) => right.score - left.score);
+  const selected = selectDecisiveCandidates(selectSubjectCandidates(matches));
+  assert.deepEqual(selected.map((item) => item.entity.canonicalName), ['Amit Chavda']);
 });

@@ -44,9 +44,11 @@ function operationFor(query: string): StructuredFactQueryResult['operation'] {
 function intentFor(query: string, fields: string[]) {
   const value = query.toLowerCase();
   if (/\b(?:birth ?date|date of birth|dob)\b/.test(value)) return 'birthdate';
+  const hasSpecificField = fields.some((field) => field !== 'summary' && field !== 'unknown');
+  if (fields.includes('summary') || (!hasSpecificField && /\b(?:who (?:is|are)|tell me about|about|profile|introduction|introduce|kaun hai|kon hai|ke bare me|iske bare me)\b/i.test(query))) return 'profile';
   if (/\b(?:where .*live|lives|rehta|rehte|reside|city|state|location|kahan)\b/i.test(query)) return 'location';
   if (/\b(?:course|training|certificate|certification)\b/i.test(query) || fields.includes('certifications')) return 'training';
-  if (/\b(?:degree|education|university|college|study|studied|academic|qualification|padhai|bhany|college)\b/i.test(query) || fields.includes('education')) return 'education';
+  if (/\b(?:degree|education|university|college|study|studied|academic|qualification|padhai|bhany|b\.?com|m\.?c\.?a|b\.?tech|m\.?tech|ph\.?d|mba|bba|bca)\b/i.test(query) || fields.includes('education')) return 'education';
   if (/\b(?:project|projects|built|created|applications?)\b/i.test(query) || fields.includes('projects')) return 'projects';
   if (/\b(?:skills?|technolog(?:y|ies)|tech stack|works? with)\b/i.test(query) || fields.includes('skills') || fields.includes('technologies')) return 'technology';
   if (/\b(?:email|phone|mobile|linkedin|github|website|portfolio|contact)\b/i.test(query) || fields.some((field) => /(?:url|email|phone|contact)/.test(field))) return 'contact';
@@ -78,6 +80,61 @@ function answerFor(input: { query: string; fields: string[]; language: DetectedR
 
   if (!bundle.entity) return { ...base, status: 'none' as const, notAvailableReason: 'No resolved entity was supplied.' };
   if (intent === 'birthdate') return { ...base, status: 'none' as const, notAvailableReason: unavailableReason(intent), finalUnavailable: true };
+  // Do not send an explicitly entity-scoped but unsupported personal field to
+  // semantic RAG. RAG can supplement descriptive fields, but it must not turn
+  // an absent salary, birth date, family detail, or other unknown field into a
+  // guessed answer.
+  if (intent === 'unknown' && (!fields.length || fields.every((field) => field === 'unknown'))) {
+    return { ...base, status: 'none' as const, notAvailableReason: unavailableReason(intent), finalUnavailable: true };
+  }
+
+  if (intent === 'profile') {
+    const profileFacts = facts.filter((fact) => [
+      'experience.status', 'profession', 'role', 'location.city', 'location.state',
+      'education.degree', 'education.institution', 'education.start_year', 'education.end_year', 'education.status', 'education.grade',
+      'training.course', 'training.institution', 'training.status',
+    ].includes(fact.field));
+    const city = fieldValues(profileFacts, 'location.city')[0];
+    const state = fieldValues(profileFacts, 'location.state')[0];
+    const status = fieldValues(profileFacts, 'experience.status')[0];
+    const groupedEducation = new Map<string, FactRecord[]>();
+    for (const fact of profileFacts.filter((fact) => fact.field.startsWith('education.'))) {
+      const key = id(fact.sourceSectionId) || id(fact._id);
+      groupedEducation.set(key, [...(groupedEducation.get(key) ?? []), fact]);
+    }
+    const education = [...groupedEducation.values()].map((entry) => {
+      const degree = fieldValues(entry, 'education.degree')[0];
+      const institution = fieldValues(entry, 'education.institution')[0];
+      const start = fieldValues(entry, 'education.start_year')[0];
+      const end = fieldValues(entry, 'education.end_year')[0];
+      const degreeStatus = fieldValues(entry, 'education.status')[0];
+      const grade = fieldValues(entry, 'education.grade')[0];
+      return [degree, institution, start && end ? `${start}-${end}` : '', degreeStatus, grade].filter(Boolean).join(' — ');
+    }).filter(Boolean);
+    const techIds = new Set(relationships.filter((relationship) => (relationship.relation ?? relationship.relationshipType) === 'USES_TECHNOLOGY').map((relationship) => id(relationship.objectEntityId ?? relationship.targetEntityId)));
+    const technologies = bundle.targets.filter((target) => techIds.has(id(target._id)) && target.entityType === 'technology').map((target) => target.canonicalName);
+    const projectIds = new Set(relationships.filter((relationship) => ['WORKED_ON', 'BUILT', 'CREATED'].includes(relationship.relation ?? relationship.relationshipType)).map((relationship) => id(relationship.objectEntityId ?? relationship.targetEntityId)));
+    const projects = bundle.targets.filter((target) => projectIds.has(id(target._id)) && target.entityType === 'project').map((target) => target.canonicalName);
+    const course = fieldValues(profileFacts, 'training.course')[0];
+    const trainingInstitution = fieldValues(profileFacts, 'training.institution')[0];
+    const trainingStatus = fieldValues(profileFacts, 'training.status')[0];
+    const sentences: string[] = [];
+    if (language === 'english') {
+      sentences.push(`${name}${status ? ` is a ${status.toLowerCase()}` : ''}${city || state ? `${status ? ' based' : ' is based'} in ${[city, state].filter(Boolean).join(', ')}` : ''}.`.replace('..', '.'));
+      if (education.length) sentences.push(`Education: ${education.join('; ')}.`);
+      if (technologies.length) sentences.push(`Technologies: ${join(technologies, language)}.`);
+      if (projects.length) sentences.push(`Documented projects (${projects.length}): ${join(projects, language)}.`);
+      if (course) sentences.push(`Training: ${[course, trainingInstitution, trainingStatus].filter(Boolean).join(' — ')}.`);
+    } else {
+      sentences.push(`${name}${status ? ` ${status.toLowerCase()} hain` : ''}${city || state ? `${status ? ' aur' : ''} ${[city, state].filter(Boolean).join(', ')} mein based hain` : ''}.`.replace('..', '.'));
+      if (education.length) sentences.push(`Education: ${education.join('; ')}.`);
+      if (technologies.length) sentences.push(`Technologies: ${join(technologies, language)}.`);
+      if (projects.length) sentences.push(`Documented projects (${projects.length}): ${join(projects, language)}.`);
+      if (course) sentences.push(`Training: ${[course, trainingInstitution, trainingStatus].filter(Boolean).join(' — ')}.`);
+    }
+    if (!profileFacts.length && !technologies.length && !projects.length) return { ...base, status: 'none' as const, notAvailableReason: unavailableReason(intent) };
+    return { ...base, status: 'answer' as const, answer: sentences.join('\n'), explicitFacts: evidence(profileFacts), structuredAnswerUsed: true };
+  }
 
   if (intent === 'location') {
     const selected = facts.filter((fact) => ['location.city', 'location.state', 'location.address', 'location.country'].includes(fact.field));
@@ -95,7 +152,13 @@ function answerFor(input: { query: string; fields: string[]; language: DetectedR
     for (const fact of selected) { const key = id(fact.sourceSectionId) || id(fact._id); groups.set(key, [...(groups.get(key) ?? []), fact]); }
     let entries = [...groups.values()];
     const degreeMention = query.match(/\b(?:b\.?com|bachelor\s+of\s+commerce|m\.?c\.?a|master\s+of\s+computer\s+ap+lication)\b/i)?.[0]?.toLowerCase();
-    if (degreeMention) entries = entries.filter((entry) => entry.some((fact) => text(fact.value).toLowerCase().includes(degreeMention.replace(/\./g, '')) || text(fact.value).toLowerCase().includes(degreeMention)));
+    if (degreeMention) {
+      const normalizedDegree = degreeMention.replace(/[^\p{L}\p{N}]/gu, '');
+      entries = entries.filter((entry) => entry.some((fact) => {
+        const normalizedValue = text(fact.value).toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+        return normalizedValue.includes(normalizedDegree) || normalizedDegree.includes(normalizedValue);
+      }));
+    }
     if (!entries.length) return { ...base, status: 'none' as const, notAvailableReason: unavailableReason(intent) };
     const selectedFacts = entries.flat();
     const summaries = entries.map((entry) => {

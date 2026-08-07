@@ -36,6 +36,12 @@ const QUERY_WORDS = new Set([
 
 const MIN_HIGH_CONFIDENCE = 0.85;
 
+// A query that clearly asks for a person-profile field can use the sole
+// person in a single-profile knowledge base even when the user omits the
+// name. This is deliberately limited to profile concepts; generic questions
+// such as "What is JavaScript?" must remain general AI questions.
+const IMPLICIT_PROFILE_QUERY = /\b(?:education|academic|qualification|degree|b\.?com|bachelor\s+of\s+commerce|m\.?c\.?a|master\s+of\s+computer\s+application|projects?|portfolio|course|training|certificate|location|address|city|state|skills?|tech(?:nologies)?|experience|profession|occupation|role|owner|ownership|birth ?date|salary|contact|email|phone|profile|who\s+(?:is|are)|tell\s+me\s+about|kaun|kon|padhai|kya\s+kar(?:ta|raha)\s+hai|projects?|course|training)\b/i;
+
 function levenshtein(left: string, right: string) {
   const rows = Array.from({ length: left.length + 1 }, (_, index) => [index]);
   for (let column = 1; column <= right.length; column += 1) rows[0][column] = column;
@@ -113,6 +119,15 @@ export function scoreEntityCandidates(query: string, candidates: EntityCandidate
         continue;
       }
 
+      // A first-name-only reference is useful only for people and only after
+      // every person candidate has been scored. The resolver below turns two
+      // equally strong matches into clarification instead of guessing.
+      const canonicalFirstName = normalizeEntityName(entity.canonicalName).split(' ')[0];
+      if (entity.entityType === 'person' && canonicalFirstName && terms.includes(canonicalFirstName)) {
+        best = best.score >= 0.92 ? best : { entity, score: 0.92, matchType: 'unique_name' };
+        continue;
+      }
+
       const fuzzy = terms.some((term) => words.some((word) => {
         const distance = term.length >= 4 ? levenshtein(term, word) : Number.POSITIVE_INFINITY;
         return distance > 0 && distance <= 1;
@@ -129,6 +144,19 @@ export function selectDecisiveCandidates(matches: ScoredEntityCandidate[]) {
   return topScore >= 0.95
     ? matches.filter((candidate) => candidate.score >= topScore - 0.02)
     : matches;
+}
+
+/**
+ * A query can contain more than one known graph value: for example a person
+ * name plus a degree, project or technology used as a filter.  Those values
+ * are not competing subjects.  When one person is uniquely identified, keep
+ * that person as the subject and leave the other terms to query/field
+ * normalization.  Multiple people remain ambiguous.
+ */
+export function selectSubjectCandidates(matches: ScoredEntityCandidate[]) {
+  const people = matches.filter((candidate) => candidate.entity.entityType === 'person');
+  if (people.length === 1 && people[0].score >= MIN_HIGH_CONFIDENCE) return people;
+  return matches;
 }
 
 export async function resolveEntityBeforeRouting(query: string): Promise<PreRoutingEntityResolution> {
@@ -149,7 +177,20 @@ export async function resolveEntityBeforeRouting(query: string): Promise<PreRout
   // match on a degree, technology, or another entity in the same sentence.
   // Keep ambiguity only among candidates with comparable evidence. This is
   // generic: it uses confidence and never relies on a particular person's name.
-  const decisiveMatches = selectDecisiveCandidates(matches);
+  const decisiveMatches = selectDecisiveCandidates(selectSubjectCandidates(matches));
+
+  const solePerson = entities.filter((entity) => entity.entityType === 'person');
+  if (IMPLICIT_PROFILE_QUERY.test(query) && solePerson.length === 1 && decisiveMatches.every((candidate) => candidate.entity.entityType !== 'person')) {
+    const person = solePerson[0];
+    return {
+      entity: person.canonicalName,
+      entityId: String(person._id),
+      confidence: 0.86,
+      route: 'knowledge',
+      reason: 'SOLE_KNOWLEDGE_PERSON_PROFILE_AUTO_SELECTED',
+      matches: [{ id: String(person._id), name: person.canonicalName, type: person.entityType }],
+    };
+  }
 
   if (decisiveMatches.length === 1) {
     const match = decisiveMatches[0];
@@ -172,6 +213,34 @@ export async function resolveEntityBeforeRouting(query: string): Promise<PreRout
       reason: 'MULTIPLE_HIGH_CONFIDENCE_KNOWLEDGE_ENTITIES',
       matches: decisiveMatches.map((match) => ({ id: String(match.entity._id), name: match.entity.canonicalName, type: match.entity.entityType })),
     };
+  }
+
+  // With one person profile in the selected knowledge base, a clearly
+  // profile-oriented query can safely inherit that person as its subject.
+  // This does not apply to arbitrary technical/general questions.
+  if (IMPLICIT_PROFILE_QUERY.test(query)) {
+    const people = entities.filter((entity) => entity.entityType === 'person');
+    if (people.length === 1) {
+      const person = people[0];
+      return {
+        entity: person.canonicalName,
+        entityId: String(person._id),
+        confidence: 0.86,
+        route: 'knowledge',
+        reason: 'SOLE_KNOWLEDGE_PERSON_PROFILE_AUTO_SELECTED',
+        matches: [{ id: String(person._id), name: person.canonicalName, type: person.entityType }],
+      };
+    }
+    if (people.length > 1) {
+      return {
+        entity: null,
+        entityId: null,
+        confidence: 0.86,
+        route: 'clarification',
+        reason: 'MULTIPLE_KNOWLEDGE_PEOPLE_REQUIRE_CLARIFICATION',
+        matches: people.map((person) => ({ id: String(person._id), name: person.canonicalName, type: person.entityType })),
+      };
+    }
   }
 
   return {

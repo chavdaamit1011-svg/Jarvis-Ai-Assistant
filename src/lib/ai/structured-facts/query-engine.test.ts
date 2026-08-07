@@ -1,5 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
+import { normalizeRequestedField } from '@/lib/ai/query-understanding/field-normalization';
 import { structuredFactTesting } from './query-engine';
 
 const fact = (field: string, value: string, section = 'section-1') => ({
@@ -48,6 +49,15 @@ test('answers degree years, status, institution, and counts from atomic educatio
   assert.match(query('Kitni degrees hain?', ['education']).answer ?? '', /2 supported education records/);
 });
 
+test('recognizes a credential abbreviation in the original live-query wording', () => {
+  const originalQuery = 'chavda amit ne bcom kis year me kiya';
+  assert.deepEqual(normalizeRequestedField(originalQuery).requestedFields, ['education']);
+  const result = query(originalQuery, ['education']);
+  assert.equal(result.status, 'answer');
+  assert.match(result.answer ?? '', /Bachelor of Commerce/);
+  assert.match(result.answer ?? '', /2021[-–]2024/);
+});
+
 test('answers project count/list, location, and training without a chunk dump', () => {
   assert.match(query('Total projects kitne hain?', ['projects']).answer ?? '', /3 supported projects/);
   assert.match(query('List the projects', ['projects']).answer ?? '', /Storefront Three/);
@@ -61,6 +71,13 @@ test('returns final unavailable for an absent exact personal field and keeps saf
   assert.equal(missing.finalUnavailable, true);
   const mca = query('What field is MCA related to?', ['education']);
   assert.ok(mca.inferredFacts.some((value) => /IT-related/.test(value)));
+});
+
+test('does not send an unsupported personal field to RAG', () => {
+  const result = query('What is the salary?', []);
+  assert.equal(result.status, 'none');
+  assert.equal(result.finalUnavailable, true);
+  assert.equal(result.ragFallbackUsed, false);
 });
 
 test('uses RAG only as a partial supplement for descriptive project questions', () => {
