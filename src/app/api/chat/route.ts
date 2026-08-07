@@ -27,6 +27,7 @@ import { runEvidencePipeline } from '@/lib/ai/brain/pipeline';
 import { rewriteKnowledgeQuery } from '@/lib/ai/query-rewriter';
 import { retrieveHybridCandidates } from '@/lib/ai/retrieval/hybrid';
 import { rerankKnowledgeChunks } from '@/lib/ai/reranker';
+import { queryStructuredFacts } from '@/lib/ai/structured-facts';
 import { toolRegistry } from '@/lib/ai/tools';
 import { createTrace } from '@/lib/ai/trace';
 import { runShadowComparison, type ShadowComparison } from '@/lib/ai/brain/shadow-mode';
@@ -272,6 +273,62 @@ export async function POST(req: Request) {
           const entity = preRoutingEntity?.route === 'knowledge' && preRoutingEntity.entity
             ? { id: preRoutingEntity.entityId ?? undefined, name: preRoutingEntity.entity, type: capabilityEntity.matches[0]?.type }
             : undefined;
+          // Atomic facts and graph relationships are authoritative for direct
+          // personal/entity questions. Only use chunk retrieval if these facts
+          // cannot fully support the request.
+          const structured = await queryStructuredFacts({
+            query: contextResolvedQuery,
+            requestedFields: executionPlan.requestedFields,
+            entityId: entity?.id,
+            entityName: entity?.name,
+            language: language.detectedLanguage,
+            visibility: parsed.data.knowledgeMode === 'private' ? 'private' : 'public',
+          });
+          const structuredSources: Source[] = structured.sources.map((source) => ({
+            documentTitle: source.documentTitle,
+            chunkIndex: source.chunkIndex,
+            score: source.score,
+          }));
+          if (traceSession) await traceSession.update({
+            structuredFactQuery: {
+              operation: structured.operation,
+              requestedFields: structured.requestedFields,
+              structuredFactsFound: structured.structuredFactsFound,
+              relationshipsFound: structured.relationshipsFound,
+              explicitFacts: structured.explicitFacts.map((fact) => ({ id: fact.id, field: fact.field, value: fact.value, documentId: fact.sourceDocumentId, chunkId: fact.sourceChunkId, confidence: fact.confidence })),
+              inferredFacts: structured.inferredFacts,
+              structuredAnswerUsed: structured.structuredAnswerUsed,
+              ragFallbackUsed: structured.ragFallbackUsed,
+              notAvailableReason: structured.notAvailableReason,
+              finalUnavailable: structured.finalUnavailable,
+            },
+          });
+          if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] structured fact query', {
+            operation: structured.operation,
+            requestedFields: structured.requestedFields,
+            structuredFactsFound: structured.structuredFactsFound,
+            relationshipsFound: structured.relationshipsFound,
+            structuredAnswerUsed: structured.structuredAnswerUsed,
+            ragFallbackUsed: structured.ragFallbackUsed,
+            notAvailableReason: structured.notAvailableReason,
+          });
+          if (structured.status === 'answer' && structured.answer) {
+            return new Response(structured.answer, {
+              headers: answerHeaders({
+                answerSource: 'structured-data',
+                usedFallback: false,
+                confidence: structured.explicitFacts.length ? Math.min(...structured.explicitFacts.map((fact) => fact.confidence)) : 0.94,
+                evaluationDecision: 'answer',
+                entitiesUsed: entity?.id ? [entity.id] : [],
+                factsUsed: structured.explicitFacts.map((fact) => fact.id),
+              }, structuredSources),
+            });
+          }
+          if (structured.finalUnavailable) {
+            return new Response(formatKnowledgeFacts({ language: language.detectedLanguage, kind: 'unavailable' }), {
+              headers: answerHeaders({ answerSource: 'structured-data', usedFallback: false, confidence: 0, evaluationDecision: 'insufficient' }),
+            });
+          }
           const rewrite = await rewriteKnowledgeQuery({
             originalQuery: contextResolvedQuery,
             resolvedEntity: entity?.name ?? null,
@@ -317,7 +374,7 @@ export async function POST(req: Request) {
           });
           if (!reranked.rankedChunks.length) {
             if (traceSession) await traceSession.update({ generation: { provider: 'none', answerSource: 'knowledge', fallbackUsed: requestedStrategy === 'knowledge_hybrid', finalCapability: 'knowledge', fallbackReason: 'zero_supported_evidence' } });
-            if (requestedStrategy === 'knowledge_strict') return new Response('Uploaded knowledge does not contain supported information for this request.', { headers: answerHeaders({ answerSource: 'rag', usedFallback: false, confidence: 0, evaluationDecision: 'insufficient' }) });
+            if (requestedStrategy === 'knowledge_strict' || structured.entitySpecific) return new Response(formatKnowledgeFacts({ language: language.detectedLanguage, kind: 'unavailable' }), { headers: answerHeaders({ answerSource: 'rag', usedFallback: false, confidence: 0, evaluationDecision: 'insufficient' }) });
             v2KnowledgeNoEvidence = true;
           } else {
             const registry = createDefaultCapabilityRegistry({
@@ -326,8 +383,8 @@ export async function POST(req: Request) {
                 capability: 'knowledge' as const,
                 answerSource: 'rag' as const,
                 data: null,
-                supportedFacts: reranked.rankedChunks.map((chunk) => chunk.text),
-                sources,
+                supportedFacts: structured.explicitFacts.map((fact) => ({ field: fact.field, value: fact.value, supportingText: fact.sourceText })),
+                sources: [...structured.sources.map((source) => ({ ...source, content: undefined })), ...sources],
                 conflicts: [],
                 fallbackAllowed: false,
                 fallbackReason: null,
@@ -346,7 +403,7 @@ export async function POST(req: Request) {
             const validation = pipeline.validationResult;
             if (pipeline.status === 'success' && validation && validation.decision !== 'reject' && supportedEvidence.length) {
               return new Response(pipeline.finalCandidateAnswer, {
-                headers: answerHeaders({ answerSource: 'rag', usedFallback: false, confidence: validation.confidence, evaluationDecision: 'answer' }, sources.map((source) => ({ documentTitle: source.documentTitle, chunkIndex: source.chunkIndex, score: 1 }))),
+                headers: answerHeaders({ answerSource: 'rag', usedFallback: false, confidence: validation.confidence, evaluationDecision: 'answer' }, [...structuredSources, ...sources.map((source) => ({ documentTitle: source.documentTitle, chunkIndex: source.chunkIndex, score: 1 }))]),
               });
             }
             return new Response('Uploaded knowledge does not contain supported information for this request.', {
