@@ -20,8 +20,10 @@ const knowledgeFactSchema = new Schema({
   // ingestion consumers have an explicit, self-describing source contract.
   sourceDocumentId: { type: Schema.Types.ObjectId, ref: 'KnowledgeDocument', index: true },
   sourceChunkId: { type: Schema.Types.ObjectId, ref: 'KnowledgeChunk', index: true },
+  sourceSectionId: { type: Schema.Types.ObjectId, ref: 'KnowledgeSection', index: true },
   sourceText: { type: String, required: true, maxlength: 1_500 },
   status: { type: String, enum: ['active', 'rejected', 'conflicted', 'archived'], default: 'active', index: true },
+  period: { type: Schema.Types.Mixed },
   qualifiers: { type: Schema.Types.Mixed, default: {} },
   validFrom: { type: Date },
   validUntil: { type: Date },
@@ -35,6 +37,11 @@ const knowledgeFactSchema = new Schema({
 knowledgeFactSchema.index({ entityId: 1, field: 1, normalizedValue: 1 });
 knowledgeFactSchema.index({ entityId: 1, predicate: 1 });
 knowledgeFactSchema.index({ entityName: 1, field: 1, normalizedValue: 1 });
+knowledgeFactSchema.index({ entityId: 1, field: 1, normalizedValue: 1, sourceDocumentId: 1, sourceSectionId: 1 }, {
+  unique: true,
+  partialFilterExpression: { sourceDocumentId: { $exists: true }, sourceSectionId: { $exists: true } },
+  name: 'knowledge_fact_source_dedupe',
+});
 knowledgeFactSchema.index({ relatedEntityId: 1 });
 knowledgeFactSchema.index({ graphVersion: 1, documentId: 1, chunkId: 1 });
 
@@ -56,7 +63,9 @@ if (existingKnowledgeFact && !existingKnowledgeFact.schema.path('sourceDocumentI
     entityType: { type: String, enum: ['person', 'organization', 'project', 'product', 'technology', 'location', 'other'], index: true },
     sourceDocumentId: { type: Schema.Types.ObjectId, ref: 'KnowledgeDocument', index: true },
     sourceChunkId: { type: Schema.Types.ObjectId, ref: 'KnowledgeChunk', index: true },
+    sourceSectionId: { type: Schema.Types.ObjectId, ref: 'KnowledgeSection', index: true },
     status: { type: String, enum: ['active', 'rejected', 'conflicted', 'archived'], default: 'active', index: true },
+    period: { type: Schema.Types.Mixed },
     qualifiers: { type: Schema.Types.Mixed, default: {} },
   });
 }
