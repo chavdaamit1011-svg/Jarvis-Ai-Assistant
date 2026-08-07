@@ -56,10 +56,25 @@ test('creates separate atomic education and skill facts from an explicit resume 
   const result = extractDeterministicFacts('Name: Dana Verma\nEDUCATION\nBachelor of Commerce | 2021 - 2024\nMaster of Computer Application | 2025 - 2027\nSKILLS\nTypeScript, React.js, Node.js');
   const education = result.facts.filter((fact) => fact.field?.startsWith('education.'));
   const skills = result.facts.filter((fact) => fact.field === 'skill');
-  assert.equal(education.length, 2);
-  assert.deepEqual(education.map((fact) => fact.value), ['Bachelor of Commerce | 2021 - 2024', 'Master of Computer Application | 2025 - 2027']);
+  assert.ok(education.some((fact) => fact.field === 'education.degree' && fact.value === 'Bachelor of Commerce'));
+  assert.ok(education.some((fact) => fact.field === 'education.degree_alias' && fact.value === 'B.Com'));
+  assert.ok(education.some((fact) => fact.field === 'education.degree' && fact.value === 'Master of Computer Application'));
+  assert.ok(education.some((fact) => fact.field === 'education.degree_alias' && fact.value === 'MCA'));
+  assert.ok(education.some((fact) => fact.field === 'education.start_year' && fact.value === '2021'));
+  assert.ok(education.some((fact) => fact.field === 'education.end_year' && fact.value === '2027'));
   assert.equal(skills.length, 3);
   assert.ok(skills.every((fact) => fact.supportingText === 'TypeScript, React.js, Node.js'));
+});
+
+test('extracts bounded project blocks without project fragments or technology leakage', () => {
+  const result = extractDeterministicFacts('Name: Dana Verma\nPROJECT WORK\nE-Commerce (First Shop)\nBuilt with HTML, CSS, JS.\nLink | https://first.example/\nE-Commerce (Second Shop)\nCreated using React.js with API integration.\nLink | https://second.example/\nE-Commerce (Third Shop)\nCreated using Node.js and MongoDB.');
+  const projects = result.entities.filter((entity) => entity.entityType === 'project');
+  assert.equal(projects.length, 3);
+  assert.equal(result.facts.filter((fact) => fact.field === 'project').length, 0);
+  const first = projects.find((project) => project.name === 'E-Commerce (First Shop)')!;
+  const firstTechnologyTargets = result.relationships.filter((relationship) => relationship.sourceTemporaryId === first.temporaryId && relationship.relationshipType === 'USES_TECHNOLOGY');
+  const entityById = new Map(result.entities.map((entity) => [entity.temporaryId, entity.name]));
+  assert.deepEqual(firstTechnologyTargets.map((relationship) => entityById.get(relationship.targetTemporaryId)).sort(), ['CSS', 'HTML', 'JavaScript']);
 });
 
 test('extracts policy, product and service values without assuming missing facts', () => {

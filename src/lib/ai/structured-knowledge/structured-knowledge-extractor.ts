@@ -1,7 +1,7 @@
 import { extractDeterministicFacts } from '@/lib/ai/knowledge-graph/extract-deterministic-facts';
 import type { CanonicalEntityType, CanonicalFactValueType } from '@/lib/ai/knowledge-schema';
 
-export const STRUCTURED_KNOWLEDGE_EXTRACTION_VERSION = 'structured-v2.1';
+export const STRUCTURED_KNOWLEDGE_EXTRACTION_VERSION = 'structured-v2.2';
 
 export type ExtractedSection = { heading: string; text: string; pageNumber?: number; sectionPath: string[]; order: number };
 export type ExtractedEntity = { temporaryId: string; canonicalName: string; normalizedName: string; entityType: CanonicalEntityType; aliases: string[]; sectionOrder: number; confidence: number };
@@ -100,7 +100,9 @@ export function extractStructuredKnowledge(content: string): StructuredKnowledge
   const uniqueEntities = unique(entities, (entity) => `${entity.entityType}:${entity.normalizedName}`);
   return {
     sections,
-    entities: uniqueEntities,
+    // Preserve each section occurrence so persistence can attach every source
+    // section to an entity. Persistence still upserts one canonical entity.
+    entities,
     facts: unique(facts, (fact) => `${fact.subjectTemporaryId}:${fact.field}:${fact.normalizedValue}:${fact.sectionOrder}`),
     relationships: unique(relationships, (relationship) => `${relationship.subjectTemporaryId}:${relationship.relation}:${relationship.objectTemporaryId}:${relationship.sectionOrder}`),
     debug: { detectedSections: sections.map((section) => section.heading).filter(Boolean), extractedEntities: uniqueEntities.map((entity) => entity.canonicalName), extractedFacts: facts.length, rejectedUncertainFacts, sourceMapping },

@@ -6,6 +6,12 @@ export const GRAPH_RELATIONSHIPS = {
   workedOn: 'WORKED_ON',
   worksAt: 'WORKS_AT',
   created: 'CREATED',
+  hasLocation: 'HAS_LOCATION',
+  inRegion: 'IN_REGION',
+  hasEducation: 'HAS_EDUCATION',
+  studiedAt: 'STUDIED_AT',
+  attendingCourse: 'ATTENDING_COURSE',
+  trainingAt: 'TRAINING_AT',
 } as const;
 
 export const GRAPH_FACT_PREDICATES = {

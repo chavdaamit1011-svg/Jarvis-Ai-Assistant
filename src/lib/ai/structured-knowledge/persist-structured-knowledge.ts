@@ -72,6 +72,15 @@ async function persist(documentId: string, extraction: StructuredKnowledgeExtrac
   // transaction rollback (or snapshot rollback below) protects valid records.
   const oldSections = await KnowledgeSection.find({ documentId: document._id }).lean();
   const oldSectionIds = oldSections.map((section) => section._id);
+  // This extraction is derived data. Remove only this document's old source
+  // association before inserting replacement records; entities shared by other
+  // documents retain their other document references.
+  await KnowledgeEntity.updateMany(
+    { sourceDocumentIds: document._id },
+    { $pull: { sourceDocumentIds: document._id, sourceSectionIds: { $in: oldSectionIds } } },
+    options,
+  );
+  await KnowledgeEntity.deleteMany({ sourceDocumentIds: { $size: 0 } }, options);
   await KnowledgeFact.deleteMany({ sourceDocumentId: document._id, sourceSectionId: { $in: oldSectionIds } }, options);
   await KnowledgeRelationship.deleteMany({ sourceDocumentId: document._id, sourceSectionId: { $in: oldSectionIds } }, options);
   await KnowledgeSection.deleteMany({ documentId: document._id }, options);

@@ -10,6 +10,7 @@ const PHONE_PATTERN = /\+?\d[\d\s()-]{7,}\d/g;
 const CANONICAL_TECHNOLOGY_ALIASES: Array<[RegExp, string]> = [
   [/\bnext\s*\.?\s*js\b/i, 'Next.js'], [/\breact\s*\.?\s*js\b/i, 'React.js'], [/\bnode\s*\.?\s*js\b/i, 'Node.js'],
   [/\bexpress\s*\.?\s*js\b/i, 'Express.js'], [/\btype\s*script\b/i, 'TypeScript'], [/\bjava\s*script\b/i, 'JavaScript'],
+  [/(?:^|[\s,|])JS(?=$|[\s,.;|])/ , 'JavaScript'],
   [/\bmongo\s*db\b/i, 'MongoDB'], [/\btailwind\s*css\b/i, 'Tailwind CSS'], [/\bbootstrap\b/i, 'Bootstrap'],
   [/\bhtml\b/i, 'HTML'], [/\bcss\b/i, 'CSS'], [/\bphp\b/i, 'PHP'], [/\bpython\b/i, 'Python'],
 ];
@@ -79,6 +80,22 @@ function splitExplicitTechnologyValues(value: string) {
   return value.replace(/\band\b/gi, ',').split(/[,|;/]/).map((item) => cleanValue(item.replace(/^[-â€¢*\s]+/, '')))
     .filter((item) => item.length >= 2 && item.length <= 80 && !/^(?:skills?|technologies|tech stack|languages?)$/i.test(item));
 }
+
+function isProjectTitle(value: string) {
+  const candidate = value.replace(/^project\s*:\s*/i, '').trim();
+  if (/^(?:project work|projects?)$/i.test(candidate) || candidate.length < 2 || candidate.length > 100) return false;
+  if (/^e-?commerce\s*\([^)]{2,80}\)$/i.test(candidate)) return true;
+  if (/[.!?]|(?:https?:\/\/|www\.)/i.test(candidate)) return false;
+  if (/\b(?:built|created|developed|using|with|added|featuring|link|login|wishlist|integration|management|architecture)\b/i.test(candidate)) return false;
+  return /^[A-Z][\w.-]*(?:\s+[A-Z][\w.-]*){0,5}$/.test(candidate);
+}
+
+function degreeAlias(degree: string) {
+  const normalized = cleanValue(degree).toLowerCase().replace(/aplication/g, 'application');
+  if (/^master\s+of\s+computer\s+application$/.test(normalized)) return 'MCA';
+  if (/^bachelor\s+of\s+commerce$/.test(normalized)) return 'B.Com';
+  return null;
+}
 /** Extracts only facts directly expressed in a chunk; it never guesses subjects or values. */
 export function extractDeterministicFacts(content: string): GraphExtractionPayload {
   const entities = new Map<string, GraphEntityCandidate>();
@@ -138,6 +155,9 @@ export function extractDeterministicFacts(content: string): GraphExtractionPaylo
     // correct platform/website field and exact value preserved.
     if (/^https?$/i.test(normalizedFieldName(label))) continue;
     if (field === 'identity') continue;
+    // Project descriptions are parsed as bounded blocks below. Treating each
+    // line as an independent project creates fragments such as "Wishlist".
+    if (field === 'project' && !labelled) continue;
     for (const value of splitAtomicValues(rawValue, field)) {
       if (value.length > 500 || /^(?:education|skills?|projects?|contact)$/i.test(value)) continue;
       addFact(primarySubject, field, value, valueTypeForField(field, value), 0.97, line, field, labelled ? { label: labelled[1] } : { section: label });
@@ -170,16 +190,20 @@ export function extractDeterministicFacts(content: string): GraphExtractionPaylo
     if (/^(?:project(?:\s+work)?|projects|portfolio projects)$/i.test(line)) { inProjectSection = true; continue; }
     if (/^[A-Z][A-Z\s&]{4,}$/.test(line) && !/^(?:PROJECT(?:\s+WORK)?|PROJECTS)$/i.test(line)) inProjectSection = false;
     if (!inProjectSection || !primaryPerson) continue;
-    const projectMatch = line.match(/^(?:project\s*:\s*)?((?:e-?commerce\s*\([^)]{2,80}\))|(?:[A-Z][\w.-]*(?:\s+[A-Z][\w.-]*){0,5}))$/i);
-    const projectName = projectMatch?.[1]?.trim();
-    if (!projectName || /^(?:project work|projects?)$/i.test(projectName)) continue;
-    const details = lines.slice(index + 1, index + 8).filter((value) => !/^(?:project\s*:\s*)?((?:e-?commerce\s*\([^)]{2,80}\))|(?:[A-Z][\w.-]*(?:\s+[A-Z][\w.-]*){0,5}))$/i.test(value));
+    if (!isProjectTitle(line)) continue;
+    const projectName = line.replace(/^project\s*:\s*/i, '').trim();
+    let end = index + 1;
+    while (end < lines.length && !isProjectTitle(lines[end]) && !/^[A-Z][A-Z\s&]{4,}$/.test(lines[end])) end += 1;
+    const details = lines.slice(index + 1, end);
     const supportingText = [line, ...details].join('\n');
     const projectId = addEntity('project', projectName);
     addRelationship(primaryPerson, GRAPH_RELATIONSHIPS.workedOn, projectId, 0.98, supportingText);
     const category = projectName.match(/^([^(]+)\(/)?.[1]?.trim();
     if (category) addFact(projectId, 'category', category, 'string', 0.98, line);
-    const description = details.find((value) => !URL_PATTERN.test(value));
+    const description = details
+      .filter((value) => !/(?:https?:\/\/|www\.)/i.test(value) && !/^link\s*(?:[|:]|$)/i.test(value))
+      .join(' ')
+      .trim();
     if (description) addFact(projectId, 'description', description, 'string', 0.96, supportingText);
     const url = supportingText.match(URL_PATTERN)?.[0];
     if (url) addFact(projectId, 'project_url', cleanValue(url), 'url', 0.99, supportingText);
@@ -200,10 +224,9 @@ export function extractDeterministicFacts(content: string): GraphExtractionPaylo
 
   // Generic creation relation for directly stated project/product creation.
   // It intentionally requires an explicit action word and named object.
-  const createdPattern = /\b(?:([A-Z][\p{L}'-]+(?:\s+[A-Z][\p{L}'-]+){0,2})\s+)?(?:created|built|developed)\s+(?:the\s+)?([A-Z][\p{L}\d_-]*(?:\s+[A-Za-z0-9][\p{L}\d _-]{0,80})?)(?:\s+(?:mobile\s+)?(?:application|app|project|product))?/giu;
+  const createdPattern = /\b([A-Z][\p{L}'-]+(?:\s+[A-Z][\p{L}'-]+){0,2})\s+(?:created|built|developed)\s+(?:the\s+)?([A-Z][\p{L}\d_-]*(?:\s+[A-Za-z0-9][\p{L}\d _-]{0,80})?)(?:\s+(?:mobile\s+)?(?:application|app|project|product))?/giu;
   for (const match of content.matchAll(createdPattern)) {
-    const person = match[1] ? addEntity('person', match[1]) : primaryPerson;
-    if (!person) continue;
+    const person = addEntity('person', match[1]);
     primaryPerson ??= person;
     const projectName = cleanValue(match[2]).replace(/\s+(?:mobile\s+)?(?:application|app|project|product)$/i, '').trim();
     if (projectName.length < 2) continue;
@@ -211,12 +234,89 @@ export function extractDeterministicFacts(content: string): GraphExtractionPaylo
   }
 
   if (primaryPerson) {
-    for (const [pattern, technology] of CANONICAL_TECHNOLOGY_ALIASES) {
-      if (!pattern.test(content)) continue;
-      const technologyId = addEntity('technology', technology);
-      const supportingText = lines.find((line) => pattern.test(line)) ?? technology;
-      if (/\b(?:may|might|possibly|perhaps|unclear|unknown)\b/i.test(supportingText)) continue;
-      addRelationship(primaryPerson, GRAPH_RELATIONSHIPS.usesTechnology, technologyId, 0.94, supportingText);
+    // Contact headers often express city and state as a pipe-delimited pair
+    // before phone/email values. This only records explicitly present terms.
+    for (const line of lines) {
+      if (!line.includes('|') || !/(?:@|\+?\d[\d\s()-]{8,})/.test(line)) continue;
+      const parts = line.split('|').map(cleanValue).filter(Boolean);
+      const locationParts = parts.filter((part) => !EMAIL_PATTERN.test(part) && !PHONE_PATTERN.test(part) && !URL_PATTERN.test(part));
+      if (locationParts.length < 2) continue;
+      const [city, state] = locationParts;
+      if (!/^[\p{L}][\p{L} .'-]{1,80}$/u.test(city) || !/^[\p{L}][\p{L} .'-]{1,80}$/u.test(state)) continue;
+      const cityId = addEntity('location', city);
+      const stateId = addEntity('location', state);
+      addFact(primaryPerson, 'location.city', city, 'string', 0.98, line);
+      addFact(primaryPerson, 'location.state', state, 'string', 0.98, line);
+      addRelationship(primaryPerson, GRAPH_RELATIONSHIPS.hasLocation, cityId, 0.98, line);
+      addRelationship(cityId, GRAPH_RELATIONSHIPS.inRegion, stateId, 0.98, line);
+    }
+
+    // Education is extracted from explicit degree wording and its adjacent
+    // supporting lines. No dates, status, grade, or institution are inferred.
+    const extractedDegrees = new Set<string>();
+    for (let index = 0; index < lines.length; index += 1) {
+      const degreeMatch = lines[index].match(/\b((?:Bachelor|Master)\s+of\s+[A-Za-z]+(?:\s+[A-Za-z]+){0,5}?)(?=\s+(?:from|with)\b|\s+\d{4}\b|\s*\||[.\n]|$)/i);
+      if (!degreeMatch) continue;
+      const degree = cleanValue(degreeMatch[1]);
+      const degreeKey = degree.toLowerCase().replace(/aplication/g, 'application');
+      if (extractedDegrees.has(degreeKey)) continue;
+      extractedDegrees.add(degreeKey);
+      const context = lines.slice(index, Math.min(lines.length, index + 3));
+      const source = context.join('\n');
+      const degreeId = addEntity('other', degree, degreeAlias(degree) ? [degreeAlias(degree)!] : []);
+      addFact(primaryPerson, 'education.degree', degree, 'string', 0.98, source);
+      const alias = degreeAlias(degree);
+      if (alias) addFact(primaryPerson, 'education.degree_alias', alias, 'string', 0.98, source);
+      addRelationship(primaryPerson, GRAPH_RELATIONSHIPS.hasEducation, degreeId, 0.98, source);
+      const institutionMatch = source.match(/\b(?:from|at)\s+([A-Z][A-Za-z& .'-]{2,100}?)(?:\.|\bwith\b|\n|$)/i);
+      if (institutionMatch) {
+        const institution = cleanValue(institutionMatch[1]);
+        const institutionId = addEntity('organization', institution);
+        addFact(primaryPerson, 'education.institution', institution, 'string', 0.98, source);
+        addRelationship(primaryPerson, GRAPH_RELATIONSHIPS.studiedAt, institutionId, 0.98, source);
+      }
+      const period = source.match(/\b(19\d{2}|20\d{2})\s*[-–]\s*(19\d{2}|20\d{2})\b/);
+      if (period) {
+        addFact(primaryPerson, 'education.start_year', period[1], 'date', 0.98, source);
+        addFact(primaryPerson, 'education.end_year', period[2], 'date', 0.98, source);
+      }
+      const status = /\b(?:pursuing|attending|ongoing)\b/i.test(source) ? 'pursuing'
+        : /\b(?:pursued|completed|graduated)\b/i.test(source) ? 'completed' : null;
+      if (status) addFact(primaryPerson, 'education.status', status, 'string', 0.98, source);
+      const grade = source.match(/\b((?:first|second|third)\s+class|distinction|[A-Z][+])\s*(?:grade|class)?\b/i)?.[1];
+      if (grade) addFact(primaryPerson, 'education.grade', cleanValue(grade), 'string', 0.98, source);
+    }
+
+    for (const line of lines) {
+      if (/^fresher$/i.test(line)) addFact(primaryPerson, 'experience.status', 'Fresher', 'string', 0.98, line);
+      const training = line.match(/^(attending|pursuing|completed)\s+(.+?)\s+from\s+([A-Z][A-Za-z& .'-]{2,120})\.?$/i);
+      if (!training) continue;
+      const [, status, course, provider] = training;
+      const courseName = cleanValue(course);
+      // A degree's "pursuing" status is handled by education extraction.
+      // Training requires an explicit course/training/certification signal.
+      if (!/\b(?:course|training|certification|certificate|bootcamp|workshop)\b/i.test(courseName)) continue;
+      const providerName = cleanValue(provider);
+      const courseId = addEntity('other', courseName);
+      const providerId = addEntity('organization', providerName);
+      addFact(primaryPerson, 'training.course', courseName, 'string', 0.98, line);
+      addFact(primaryPerson, 'training.institution', providerName, 'string', 0.98, line);
+      addFact(primaryPerson, 'training.status', status.toLowerCase(), 'string', 0.98, line);
+      addRelationship(primaryPerson, GRAPH_RELATIONSHIPS.attendingCourse, courseId, 0.98, line);
+      addRelationship(courseId, GRAPH_RELATIONSHIPS.trainingAt, providerId, 0.98, line);
+    }
+
+    // Project-specific technologies are emitted only by their bounded project
+    // blocks above. Do not duplicate them as person skills from that section.
+    const projectSection = lines.some((line) => /^(?:project(?:\s+work)?|projects)$/i.test(line));
+    if (!projectSection) {
+      for (const [pattern, technology] of CANONICAL_TECHNOLOGY_ALIASES) {
+        if (!pattern.test(content)) continue;
+        const technologyId = addEntity('technology', technology);
+        const supportingText = lines.find((line) => pattern.test(line)) ?? technology;
+        if (/\b(?:may|might|possibly|perhaps|unclear|unknown)\b/i.test(supportingText)) continue;
+        addRelationship(primaryPerson, GRAPH_RELATIONSHIPS.usesTechnology, technologyId, 0.94, supportingText);
+      }
     }
     // Supports previously unseen technologies when a document explicitly labels
     // them as skills/technologies or says the person works with them.
