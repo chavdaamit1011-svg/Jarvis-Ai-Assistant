@@ -40,6 +40,11 @@ const bundle = () => ({
     { _id: 'tech-8', sourceEntityId: 'person-1', targetEntityId: 'tech-8', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Backend: Node.js | Express.js | MongoDB', confidence: 1 },
     { _id: 'tech-9', sourceEntityId: 'person-1', targetEntityId: 'tech-9', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Backend: Node.js | Express.js | MongoDB', confidence: 1 },
   ],
+  projectRelationships: [
+    { _id: 'project-tech-1', sourceEntityId: 'project-1', targetEntityId: 'tech-1', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Storefront One uses JavaScript', confidence: 1 },
+    { _id: 'project-tech-2', sourceEntityId: 'project-2', targetEntityId: 'tech-6', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Storefront Two uses React.js', confidence: 1 },
+    { _id: 'project-tech-3', sourceEntityId: 'project-3', targetEntityId: 'tech-9', relationshipType: 'USES_TECHNOLOGY', documentId: 'document-1', chunkId: 'chunk-1', sourceDocumentId: 'document-1', sourceChunkId: 'chunk-1', sourceText: 'Storefront Three uses MongoDB', confidence: 1 },
+  ],
   targets: [
     { _id: 'project-1', canonicalName: 'Storefront One', entityType: 'project' },
     { _id: 'project-2', canonicalName: 'Storefront Two', entityType: 'project' },
@@ -54,7 +59,13 @@ const bundle = () => ({
     { _id: 'tech-8', canonicalName: 'Express.js', entityType: 'technology' },
     { _id: 'tech-9', canonicalName: 'MongoDB', entityType: 'technology' },
   ],
-  targetFacts: [fact('description', 'A supported storefront project.')],
+  targetFacts: [
+    { ...fact('description', 'A supported storefront project.'), entityId: 'project-1' },
+    { ...fact('project_url', 'https://example.test/one'), entityId: 'project-1' },
+    { ...fact('description', 'A React storefront project.'), entityId: 'project-2' },
+    { ...fact('project_url', 'https://example.test/two'), entityId: 'project-2' },
+    { ...fact('description', 'A MongoDB storefront project.'), entityId: 'project-3' },
+  ],
   sources: [],
 });
 
@@ -77,7 +88,7 @@ test('recognizes a credential abbreviation in the original live-query wording', 
 });
 
 test('answers project count/list, location, and training without a chunk dump', () => {
-  assert.match(query('Total projects kitne hain?', ['projects']).answer ?? '', /3 supported projects/);
+  assert.match(query('Total projects kitne hain?', ['projects']).answer ?? '', /3 documented projects/);
   assert.match(query('List the projects', ['projects']).answer ?? '', /Storefront Three/);
   assert.equal(query('Kahan rehta hai?', ['location']).answer, "Example Person's stored location is Surat, Gujarat.");
   assert.match(query('Which certificate course is attending?', ['certifications']).answer ?? '', /IT Full Stack Web Development/);
@@ -98,10 +109,10 @@ test('does not send an unsupported personal field to RAG', () => {
   assert.equal(result.ragFallbackUsed, false);
 });
 
-test('uses RAG only as a partial supplement for descriptive project questions', () => {
+test('returns only stored project descriptions for descriptive project questions', () => {
   const result = query('Tell me about the projects', ['projects']);
-  assert.equal(result.status, 'partial');
-  assert.equal(result.ragFallbackUsed, true);
+  assert.equal(result.status, 'answer');
+  assert.equal(result.ragFallbackUsed, false);
   assert.match(result.answer ?? '', /Storefront One/);
 });
 
@@ -140,4 +151,25 @@ test('uses generic intent typo normalization without entity-specific question ru
   const profile = query('whi is Example Person');
   assert.equal(profile.status, 'answer');
   assert.equal(profile.semanticConcept, 'profile');
+});
+
+test('strictly applies project count, URL, entity, and technology projections', () => {
+  const count = query('How many projects does Example Person have?', ['projects']);
+  assert.equal(count.answer, 'Example Person has 3 documented projects.');
+  assert.doesNotMatch(count.answer ?? '', /Storefront One/);
+
+  const urls = query('Give me the projects link only', ['projects']);
+  assert.equal(urls.answer, 'https://example.test/one\nhttps://example.test/two');
+  assert.equal(urls.outputMode, 'values_only');
+
+  const namedUrl = query('Give me the Storefront Two project link', ['projects']);
+  assert.equal(namedUrl.answer, 'https://example.test/two');
+  assert.deepEqual(namedUrl.matchedProjectEntities, ['Storefront Two']);
+
+  const react = query('In which project did Example Person use React?', ['projects']);
+  assert.equal(react.answer, 'Storefront Two');
+  assert.doesNotMatch(react.answer ?? '', /Storefront One|Storefront Three/);
+
+  const mongo = query('MongoDB kis project me use kiya?', ['projects']);
+  assert.equal(mongo.answer, 'Storefront Three');
 });
