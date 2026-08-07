@@ -124,7 +124,9 @@ export function extractDeterministicFacts(content: string): GraphExtractionPaylo
   for (const line of lines) {
     const heading = line.match(/^([A-Za-z][A-Za-z &/-]{2,80})$/)?.[1];
     if (heading && /^[A-Z\s&/-]+$/.test(heading) && !/^(?:NAME|ROLE|TITLE)$/i.test(heading)) {
-      activeSection = canonicalField(heading);
+      const candidateSection = canonicalField(heading);
+      // An all-caps name or arbitrary document title is not a field heading.
+      activeSection = candidateSection.startsWith('custom.') ? null : candidateSection;
       continue;
     }
     const labelled = line.match(/^([A-Za-z][A-Za-z &/-]{1,80})\s*:\s*(.+)$/);
@@ -132,6 +134,9 @@ export function extractDeterministicFacts(content: string): GraphExtractionPaylo
     const rawValue = labelled?.[2] ?? (activeSection ? line : null);
     if (!label || !rawValue || !primarySubject) continue;
     const field = labelled ? canonicalField(label) : activeSection!;
+    // A URL scheme is not a semantic label. URLs are extracted below with their
+    // correct platform/website field and exact value preserved.
+    if (/^https?$/i.test(normalizedFieldName(label))) continue;
     if (field === 'identity') continue;
     for (const value of splitAtomicValues(rawValue, field)) {
       if (value.length > 500 || /^(?:education|skills?|projects?|contact)$/i.test(value)) continue;

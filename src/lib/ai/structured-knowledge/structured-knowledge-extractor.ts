@@ -16,6 +16,12 @@ export type StructuredKnowledgeExtraction = {
 };
 
 const normalize = (value: string) => value.toLocaleLowerCase().replace(/[^\p{L}\p{N}]+/gu, ' ').trim().replace(/\s+/g, ' ');
+const normalizeEntity = (name: string, entityType: CanonicalEntityType) => {
+  const normalized = normalize(name);
+  const words = normalized.split(' ').filter(Boolean);
+  // Person-name word order is not identity; other entity types retain order.
+  return entityType === 'person' && words.length >= 2 && words.length <= 3 ? [...words].sort().join(' ') : normalized;
+};
 const isHeading = (line: string) => /^[A-Z][A-Z\s&/-]{2,100}$/.test(line) || /^(?:education|skills?|projects?|experience|certifications?|contact|about|products?|services?|policies)$/i.test(line);
 
 /** Splits by explicit headings only; paragraphs remain intact for source fidelity. */
@@ -69,8 +75,17 @@ export function extractStructuredKnowledge(content: string): StructuredKnowledge
 
   for (const section of sections) {
     const graph = extractDeterministicFacts([contextLine, section.heading, section.text].filter(Boolean).join('\n'));
-    const ids = new Set(graph.entities.map((entity) => entity.temporaryId));
-    for (const entity of graph.entities) entities.push({ temporaryId: entity.temporaryId, canonicalName: entity.name, normalizedName: normalize(entity.name), entityType: entity.entityType, aliases: entity.aliases, sectionOrder: section.order, confidence: 0.95 });
+    // The deterministic graph extractor may surface a lowercase sentence
+    // fragment as a tentative entity. Structured records only keep explicit
+    // entity-like names; technologies retain their own recognized casing.
+    const credibleEntities = graph.entities.filter((entity) => {
+      if (/^(?:\p{Lu}|\d)/u.test(entity.name)) return true;
+      // A single-token lowercase technology can be explicit (for example a
+      // language/tool name); lowercase multi-word prose is not an entity.
+      return entity.entityType === 'technology' && /^[a-z\d.+#-]+$/i.test(entity.name) && !/\s/.test(entity.name);
+    });
+    const ids = new Set(credibleEntities.map((entity) => entity.temporaryId));
+    for (const entity of credibleEntities) entities.push({ temporaryId: entity.temporaryId, canonicalName: entity.name, normalizedName: normalizeEntity(entity.name, entity.entityType), entityType: entity.entityType, aliases: entity.aliases, sectionOrder: section.order, confidence: 0.95 });
     for (const fact of graph.facts) {
       if (!ids.has(fact.subjectTemporaryId) || !fact.supportingText.trim()) { rejectedUncertainFacts.push(`Unsupported fact in section ${section.order}`); continue; }
       facts.push({ subjectTemporaryId: fact.subjectTemporaryId, field: fact.field ?? fact.predicate, value: fact.value, normalizedValue: normalize(Array.isArray(fact.value) ? fact.value.join(' ') : String(fact.value)), valueType: fact.valueType, qualifiers: fact.qualifiers ?? {}, sourceText: fact.supportingText, confidence: fact.confidence, sectionOrder: section.order });
@@ -79,7 +94,7 @@ export function extractStructuredKnowledge(content: string): StructuredKnowledge
       if (!ids.has(relationship.sourceTemporaryId) || !ids.has(relationship.targetTemporaryId) || !relationship.supportingText.trim()) { rejectedUncertainFacts.push(`Unsupported relationship in section ${section.order}`); continue; }
       relationships.push({ subjectTemporaryId: relationship.sourceTemporaryId, relation: relationship.relationshipType, objectTemporaryId: relationship.targetTemporaryId, qualifiers: {}, sourceText: relationship.supportingText, confidence: relationship.confidence, sectionOrder: section.order });
     }
-    sourceMapping.push({ sectionOrder: section.order, entityCount: graph.entities.length, factCount: graph.facts.length, relationshipCount: graph.relationships.length });
+    sourceMapping.push({ sectionOrder: section.order, entityCount: credibleEntities.length, factCount: facts.filter((fact) => fact.sectionOrder === section.order).length, relationshipCount: relationships.filter((relationship) => relationship.sectionOrder === section.order).length });
   }
   const unique = <T>(items: T[], key: (item: T) => string) => [...new Map(items.map((item) => [key(item), item])).values()];
   const uniqueEntities = unique(entities, (entity) => `${entity.entityType}:${entity.normalizedName}`);

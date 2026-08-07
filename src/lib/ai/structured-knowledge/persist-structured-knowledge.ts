@@ -11,6 +11,20 @@ import KnowledgeSection from '@/models/KnowledgeSection';
 import { extractStructuredKnowledge, STRUCTURED_KNOWLEDGE_EXTRACTION_VERSION, type StructuredKnowledgeExtraction } from './structured-knowledge-extractor';
 
 export type StructuredKnowledgeCounts = { sectionCount: number; entityCount: number; factCount: number; relationshipCount: number; extractionVersion: string; processedAt: Date };
+export type StructuredKnowledgeAudit = StructuredKnowledgeCounts & {
+  documentId: string;
+  title: string;
+  failedExtractions: number;
+  duplicatesRemoved: number;
+  unmappedFacts: number;
+  unmappedRelationships: number;
+  averageConfidence: number;
+  samples: {
+    entities: Array<{ id: string; canonicalName: string; entityType: string; confidence: number }>;
+    facts: Array<{ entityName: string; field: string; value: unknown; valueType: string; sourceSectionId: string; confidence: number }>;
+    relationships: Array<{ relation: string; subjectEntityId: string; objectEntityId: string; sourceSectionId: string; confidence: number }>;
+  };
+};
 
 function dbOptions(session?: ClientSession) { return session ? { session } : {}; }
 
@@ -65,6 +79,7 @@ async function persist(documentId: string, extraction: StructuredKnowledgeExtrac
   const createdSections = await KnowledgeSection.insertMany(extraction.sections.map((section) => ({ documentId: document._id, ...section })), options);
   const sectionIdByOrder = new Map(createdSections.map((section) => [section.order, section._id]));
   const entityIdByTemporaryId = new Map<string, mongoose.Types.ObjectId>();
+  const canonicalNameByTemporaryId = new Map<string, string>();
   for (const entity of extraction.entities) {
     const sectionId = sectionIdByOrder.get(entity.sectionOrder);
     const record = await KnowledgeEntity.findOneAndUpdate(
@@ -73,6 +88,7 @@ async function persist(documentId: string, extraction: StructuredKnowledgeExtrac
       { upsert: true, new: true, setDefaultsOnInsert: true, ...options },
     );
     entityIdByTemporaryId.set(entity.temporaryId, record._id);
+    canonicalNameByTemporaryId.set(entity.temporaryId, record.canonicalName);
   }
 
   const factOperations = extraction.facts.flatMap((fact) => {
@@ -82,7 +98,7 @@ async function persist(documentId: string, extraction: StructuredKnowledgeExtrac
     const entity = extraction.entities.find((item) => item.temporaryId === fact.subjectTemporaryId);
     return [{ updateOne: {
       filter: { entityId, field: fact.field, normalizedValue: fact.normalizedValue, sourceDocumentId: document._id, sourceSectionId },
-      update: { $set: { entityName: entity?.canonicalName, entityType: entity?.entityType, predicate: fact.field, valueType: fact.valueType, value: fact.value, status: 'active' as const, qualifiers: fact.qualifiers, sourceText: fact.sourceText, confidence: fact.confidence, documentId: document._id, chunkId: legacyChunkId, sourceChunkId: legacyChunkId }, $setOnInsert: { entityId, normalizedValue: fact.normalizedValue, sourceDocumentId: document._id, sourceSectionId } },
+      update: { $set: { entityName: canonicalNameByTemporaryId.get(fact.subjectTemporaryId) ?? entity?.canonicalName, entityType: entity?.entityType, predicate: fact.field, valueType: fact.valueType, value: fact.value, status: 'active' as const, qualifiers: fact.qualifiers, sourceText: fact.sourceText, confidence: fact.confidence, documentId: document._id, chunkId: legacyChunkId, sourceChunkId: legacyChunkId }, $setOnInsert: { entityId, normalizedValue: fact.normalizedValue, sourceDocumentId: document._id, sourceSectionId } },
       upsert: true,
     } }];
   });
@@ -136,4 +152,60 @@ export async function reprocessDocument(documentId: string) {
   } finally {
     await session.endSession();
   }
+}
+
+/** Explicitly named admin action for existing documents. */
+export const reprocessExistingDocument = reprocessDocument;
+
+export async function auditStructuredKnowledgeDocument(documentId: string): Promise<StructuredKnowledgeAudit> {
+  await connectToDatabase();
+  const document = await KnowledgeDocument.findById(documentId).select('title structuredKnowledge extractionErrors').lean();
+  if (!document) throw new Error('Knowledge document not found.');
+  const sections = await KnowledgeSection.find({ documentId }).select('_id').lean();
+  const sectionIds = sections.map((section) => section._id);
+  const [facts, relationships] = await Promise.all([
+    KnowledgeFact.find({ sourceDocumentId: documentId, sourceSectionId: { $in: sectionIds } }).select('entityId entityName field value valueType normalizedValue sourceSectionId confidence').lean(),
+    KnowledgeRelationship.find({ sourceDocumentId: documentId, sourceSectionId: { $in: sectionIds } }).select('subjectEntityId relation objectEntityId sourceSectionId confidence').lean(),
+  ]);
+  const factKeys = new Set<string>();
+  const relationshipKeys = new Set<string>();
+  let duplicateRows = 0;
+  for (const fact of facts) {
+    const key = `${fact.entityId}:${fact.field}:${fact.normalizedValue}:${fact.sourceSectionId}`;
+    if (factKeys.has(key)) duplicateRows += 1;
+    factKeys.add(key);
+  }
+  for (const relationship of relationships) {
+    const key = `${relationship.subjectEntityId}:${relationship.relation}:${relationship.objectEntityId}:${relationship.sourceSectionId}`;
+    if (relationshipKeys.has(key)) duplicateRows += 1;
+    relationshipKeys.add(key);
+  }
+  const confidences = [...facts, ...relationships].map((record) => record.confidence).filter((value): value is number => typeof value === 'number');
+  const entityIds = new Set(facts.map((fact) => String(fact.entityId)).filter(Boolean));
+  for (const relationship of relationships) {
+    if (relationship.subjectEntityId) entityIds.add(String(relationship.subjectEntityId));
+    if (relationship.objectEntityId) entityIds.add(String(relationship.objectEntityId));
+  }
+  const stored = document.structuredKnowledge as Partial<StructuredKnowledgeCounts> | undefined;
+  const entityRecords = await KnowledgeEntity.find({ sourceDocumentIds: documentId }).select('canonicalName entityType confidence').limit(3).lean();
+  return {
+    documentId,
+    title: document.title,
+    sectionCount: sections.length,
+    entityCount: entityIds.size,
+    factCount: facts.length,
+    relationshipCount: relationships.length,
+    extractionVersion: stored?.extractionVersion ?? '',
+    processedAt: stored?.processedAt ?? new Date(0),
+    failedExtractions: Array.isArray(document.extractionErrors) ? document.extractionErrors.length : 0,
+    duplicatesRemoved: duplicateRows,
+    unmappedFacts: facts.filter((fact) => !fact.sourceSectionId).length,
+    unmappedRelationships: relationships.filter((relationship) => !relationship.sourceSectionId).length,
+    averageConfidence: confidences.length ? Number((confidences.reduce((sum, value) => sum + value, 0) / confidences.length).toFixed(3)) : 0,
+    samples: {
+      entities: entityRecords.map((entity) => ({ id: String(entity._id), canonicalName: entity.canonicalName, entityType: entity.entityType, confidence: entity.confidence })),
+      facts: facts.slice(0, 3).map((fact) => ({ entityName: fact.entityName ?? '', field: fact.field, value: fact.value, valueType: fact.valueType, sourceSectionId: String(fact.sourceSectionId), confidence: fact.confidence })),
+      relationships: relationships.slice(0, 3).map((relationship) => ({ relation: relationship.relation ?? '', subjectEntityId: String(relationship.subjectEntityId), objectEntityId: String(relationship.objectEntityId), sourceSectionId: String(relationship.sourceSectionId), confidence: relationship.confidence })),
+    },
+  };
 }
