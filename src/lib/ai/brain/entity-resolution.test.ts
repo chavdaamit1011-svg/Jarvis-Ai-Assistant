@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { scoreEntityCandidates, type EntityCandidate } from './entity-resolution';
+import { scoreEntityCandidates, selectDecisiveCandidates, type EntityCandidate } from './entity-resolution';
 
 const oneEntity: EntityCandidate[] = [{
   _id: 'one', canonicalName: 'Example Person', normalizedName: 'example person', aliases: ['Example'], entityType: 'person',
@@ -31,4 +31,16 @@ test('keeps same-name entities ambiguous', () => {
 test('does not resolve an unknown entity', () => {
   const matches = scoreEntityCandidates('Tell me about Unknown Person', oneEntity).filter((item) => item.score >= 0.85);
   assert.equal(matches.length, 0);
+});
+
+test('keeps a full-name match decisive over an unrelated fuzzy entity match', () => {
+  const candidates: EntityCandidate[] = [
+    { _id: 'person', canonicalName: 'Example Person', normalizedName: 'example person', aliases: ['Example'], entityType: 'person' },
+    { _id: 'degree', canonicalName: 'B.Com', normalizedName: 'b.com', aliases: [], entityType: 'other' },
+  ];
+  const matches = scoreEntityCandidates('Person Example completed bcom', candidates)
+    .filter((item) => item.score >= 0.85)
+    .sort((left, right) => right.score - left.score);
+  assert.equal(selectDecisiveCandidates(matches).length, 1);
+  assert.equal(selectDecisiveCandidates(matches)[0].entity.canonicalName, 'Example Person');
 });

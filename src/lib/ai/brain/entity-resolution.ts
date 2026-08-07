@@ -1,8 +1,4 @@
-import 'server-only';
-
-import { connectToDatabase } from '@/lib/db/connect';
 import { normalizeEntityName } from '@/lib/ai/knowledge-graph/normalize-entity';
-import KnowledgeEntity from '@/models/KnowledgeEntity';
 
 export type PreRoutingEntityResolution = {
   entity: string | null;
@@ -106,12 +102,21 @@ export function scoreEntityCandidates(query: string, candidates: EntityCandidate
 
       // A first-name alias can be sufficient only after the candidate set is
       // evaluated. Two entities with the same name remain ambiguous below.
-      if (words.length >= 2 && exactTerms.length === 1) {
+      // A one-word reference is safe only when it is explicitly stored as an
+      // alias. Deriving one from any word in a multi-word name makes ordinary
+      // words such as "person" or "company" unsafe entity candidates.
+      const standaloneAlias = (entity.aliases ?? [])
+        .map(normalizeEntityName)
+        .some((alias) => alias.split(' ').length === 1 && terms.includes(alias));
+      if (words.length >= 2 && exactTerms.length === 1 && standaloneAlias) {
         best = best.score >= 0.92 ? best : { entity, score: 0.92, matchType: 'unique_name' };
         continue;
       }
 
-      const fuzzy = terms.some((term) => words.some((word) => term.length >= 4 && levenshtein(term, word) <= 1));
+      const fuzzy = terms.some((term) => words.some((word) => {
+        const distance = term.length >= 4 ? levenshtein(term, word) : Number.POSITIVE_INFINITY;
+        return distance > 0 && distance <= 1;
+      }));
       if (fuzzy && best.score < 0.86) best = { entity, score: 0.86, matchType: 'fuzzy' };
     }
 
@@ -119,7 +124,18 @@ export function scoreEntityCandidates(query: string, candidates: EntityCandidate
   });
 }
 
+export function selectDecisiveCandidates(matches: ScoredEntityCandidate[]) {
+  const topScore = matches[0]?.score ?? 0;
+  return topScore >= 0.95
+    ? matches.filter((candidate) => candidate.score >= topScore - 0.02)
+    : matches;
+}
+
 export async function resolveEntityBeforeRouting(query: string): Promise<PreRoutingEntityResolution> {
+  const [{ connectToDatabase }, { default: KnowledgeEntity }] = await Promise.all([
+    import('@/lib/db/connect'),
+    import('@/models/KnowledgeEntity'),
+  ]);
   await connectToDatabase();
   const entities = await KnowledgeEntity.find({ status: { $ne: 'archived' } })
     .select('canonicalName normalizedName aliases entityType')
@@ -129,8 +145,14 @@ export async function resolveEntityBeforeRouting(query: string): Promise<PreRout
     .filter((candidate) => candidate.score >= MIN_HIGH_CONFIDENCE)
     .sort((left, right) => right.score - left.score || left.entity.canonicalName.localeCompare(right.entity.canonicalName));
 
-  if (matches.length === 1) {
-    const match = matches[0];
+  // A complete name/alias match is stronger evidence than an incidental fuzzy
+  // match on a degree, technology, or another entity in the same sentence.
+  // Keep ambiguity only among candidates with comparable evidence. This is
+  // generic: it uses confidence and never relies on a particular person's name.
+  const decisiveMatches = selectDecisiveCandidates(matches);
+
+  if (decisiveMatches.length === 1) {
+    const match = decisiveMatches[0];
     return {
       entity: match.entity.canonicalName,
       entityId: String(match.entity._id),
@@ -141,14 +163,14 @@ export async function resolveEntityBeforeRouting(query: string): Promise<PreRout
     };
   }
 
-  if (matches.length > 1) {
+  if (decisiveMatches.length > 1) {
     return {
       entity: null,
       entityId: null,
-      confidence: matches[0].score,
+      confidence: decisiveMatches[0].score,
       route: 'clarification',
       reason: 'MULTIPLE_HIGH_CONFIDENCE_KNOWLEDGE_ENTITIES',
-      matches: matches.map((match) => ({ id: String(match.entity._id), name: match.entity.canonicalName, type: match.entity.entityType })),
+      matches: decisiveMatches.map((match) => ({ id: String(match.entity._id), name: match.entity.canonicalName, type: match.entity.entityType })),
     };
   }
 
