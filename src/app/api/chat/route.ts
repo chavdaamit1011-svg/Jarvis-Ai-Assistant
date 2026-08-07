@@ -33,6 +33,7 @@ import { createTrace } from '@/lib/ai/trace';
 import { runShadowComparison, type ShadowComparison } from '@/lib/ai/brain/shadow-mode';
 import { compareEvidencePipeline } from '@/lib/ai/brain/pipeline';
 import { conversationEntityManager, type ActiveConversationEntity } from '@/lib/ai/brain/conversation-entity-manager';
+import { conversationReferenceManager, type ReferenceResolution } from '@/lib/ai/brain/conversation-reference-manager';
 import Conversation from '@/models/Conversation';
 import mongoose from 'mongoose';
 
@@ -117,20 +118,24 @@ export async function POST(req: Request) {
   let activeEntityBefore: ActiveConversationEntity | null = null;
   let activeEntityAfter: ActiveConversationEntity | null = null;
   let referenceResolution: ReturnType<typeof conversationEntityManager.resolvePronouns> | null = null;
+  let conversationalReference: ReferenceResolution | null = null;
   if ((process.env.AI_BRAIN_SHADOW_MODE === 'true' || v2Enabled) && latestUserQuestion && parsed.data.conversationId && mongoose.isValidObjectId(parsed.data.conversationId)) {
     try {
-      const stored = await Conversation.findById(parsed.data.conversationId).select('activeEntityId activeEntityName activeEntityType').lean();
+      const stored = await Conversation.findById(parsed.data.conversationId).select('activeEntityId activeEntityName activeEntityType referenceState').lean();
       if (stored?.activeEntityName && stored.activeEntityType) conversationEntityManager.setActiveEntity(parsed.data.conversationId, { id: stored.activeEntityId ?? undefined, name: stored.activeEntityName, type: stored.activeEntityType as typeof activeEntityBefore extends null ? never : NonNullable<typeof activeEntityBefore>['type'] });
+      conversationReferenceManager.restore(parsed.data.conversationId, stored?.referenceState as Parameters<typeof conversationReferenceManager.restore>[1]);
       activeEntityBefore = conversationEntityManager.getActiveEntity(parsed.data.conversationId);
+      conversationalReference = conversationReferenceManager.resolve(parsed.data.conversationId, latestUserQuestion);
+      if (conversationalReference.method !== 'none') contextResolvedQuery = conversationalReference.resolvedQuery;
       referenceResolution = conversationEntityManager.resolvePronouns(parsed.data.conversationId, latestUserQuestion);
-      if (referenceResolution.resolved) contextResolvedQuery = referenceResolution.resolvedQuery;
+      if (referenceResolution.resolved && conversationalReference.method === 'none') contextResolvedQuery = referenceResolution.resolvedQuery;
       if (v2Enabled) {
         const resolvedContext = resolveConversationContext({
           currentQuery: latestUserQuestion,
           recentMessages: parsed.data.messages.slice(0, -1).slice(-6),
           activeEntities: activeEntityBefore ? [{ type: activeEntityBefore.type, name: activeEntityBefore.name, id: activeEntityBefore.id }] : [],
         });
-        if (!resolvedContext.requiresClarification && resolvedContext.standaloneQuery.trim()) contextResolvedQuery = resolvedContext.standaloneQuery;
+        if (conversationalReference.method === 'none' && !resolvedContext.requiresClarification && resolvedContext.standaloneQuery.trim()) contextResolvedQuery = resolvedContext.standaloneQuery;
       }
     } catch {
       // Context metadata never blocks the existing chat request.
@@ -179,6 +184,29 @@ export async function POST(req: Request) {
     return createAnswerHeaders(tracedMetadata, sources);
   };
   const requestedStrategy: AnswerStrategy = parsed.data.chatMode ?? parsed.data.answerStrategy ?? (parsed.data.knowledgeMode === 'off' ? 'normal' : 'knowledge_hybrid');
+  const persistReferenceState = async (input: { entity?: { id?: string; name?: string; type?: string }; structured: { semanticConcept: string; operation: string; projection: string[]; matchedProjectEntities: string[]; finalSelectedValues: string[] } }) => {
+    if (!parsed.data.conversationId || !mongoose.isValidObjectId(parsed.data.conversationId)) return;
+    const previous = conversationReferenceManager.get(parsed.data.conversationId);
+    const preserveOrderedResultSet = conversationalReference?.method === 'positional'
+      || conversationalReference?.method === 'selected_entity'
+      || conversationalReference?.method === 'remaining'
+      || input.structured.operation === 'relationship_lookup';
+    const selectedNames = input.structured.semanticConcept === 'projects'
+      ? (input.structured.operation === 'relationship_lookup' ? input.structured.finalSelectedValues : input.structured.matchedProjectEntities)
+      : [];
+    const resultNames = selectedNames.filter((value) => value.trim() && !/^https?:\/\//i.test(value));
+    const state = conversationReferenceManager.set(parsed.data.conversationId, {
+      activeEntityIds: input.entity?.id ? [input.entity.id] : [],
+      activeEntityName: input.entity?.name ?? null,
+      activeResultSet: preserveOrderedResultSet ? previous.activeResultSet : resultNames.length ? resultNames.map((name) => ({ name, type: 'project' as const })) : previous.activeResultSet,
+      selectedEntityNames: input.structured.operation === 'relationship_lookup' ? resultNames : conversationalReference?.selectedEntities.length ? conversationalReference.selectedEntities.map((item) => item.name) : [],
+      lastMentionedEntities: input.structured.operation === 'relationship_lookup' ? resultNames.map((name) => ({ name, type: 'project' as const })) : conversationalReference?.selectedEntities.length ? conversationalReference.selectedEntities : resultNames.map((name) => ({ name, type: 'project' as const })),
+      lastOperation: input.structured.operation,
+      lastConcept: input.structured.semanticConcept,
+      lastProjection: input.structured.projection,
+    });
+    await Conversation.findByIdAndUpdate(parsed.data.conversationId, { $set: { referenceState: state, updatedAt: new Date() } });
+  };
   let v2KnowledgeNoEvidence = false;
   let preRoutingEntity: Awaited<ReturnType<typeof resolveEntityBeforeRouting>> | null = null;
   if (latestUserQuestion) {
@@ -296,6 +324,12 @@ export async function POST(req: Request) {
           headers: answerHeaders({ answerSource: 'clarification', usedFallback: false, confidence: executionPlan.confidence, evaluationDecision: 'clarify' }),
         });
       }
+      if (conversationalReference?.requiresClarification) {
+        if (traceSession) await traceSession.update({ contextResolution: { originalQuery: latestUserQuestion, resolvedQuery: contextResolvedQuery, resolvedReferences: conversationalReference.resolvedReferences, activeResultSet: conversationReferenceManager.get(parsed.data.conversationId ?? '').activeResultSet.map((item) => item.name), selectedEntities: conversationalReference.selectedEntities.map((item) => item.name), referenceResolutionMethod: conversationalReference.method } });
+        return new Response(conversationalReference.clarificationQuestion ?? 'Please clarify the referenced item.', {
+          headers: answerHeaders({ answerSource: 'clarification', usedFallback: false, confidence: 0.9, evaluationDecision: 'clarify' }),
+        });
+      }
       if (executionPlan.capability === 'knowledge') {
         try {
           const entity = preRoutingEntity?.route === 'knowledge' && preRoutingEntity.entity
@@ -407,6 +441,8 @@ export async function POST(req: Request) {
             });
             const validation = pipeline.validationResult;
             if (pipeline.status === 'success' && validation?.decision !== 'reject' && (pipeline.evidence?.facts.length || structured.verification?.result === 'unknown')) {
+              await persistReferenceState({ entity, structured });
+              if (traceSession) await traceSession.update({ contextResolution: { originalQuery: latestUserQuestion, resolvedQuery: contextResolvedQuery, resolvedReferences: conversationalReference?.resolvedReferences ?? [], activeResultSet: conversationReferenceManager.get(parsed.data.conversationId ?? '').activeResultSet.map((item) => item.name), selectedEntities: conversationalReference?.selectedEntities.map((item) => item.name) ?? [], referenceResolutionMethod: conversationalReference?.method ?? 'entity_pronoun' } });
               return new Response(pipeline.finalCandidateAnswer, {
                 headers: answerHeaders({
                   answerSource: 'structured-data', usedFallback: false, confidence: validation?.confidence ?? 0,

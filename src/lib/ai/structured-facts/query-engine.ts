@@ -600,7 +600,14 @@ async function loadRecords(input: QueryInput): Promise<RecordBundle> {
 export async function queryStructuredFacts(input: QueryInput): Promise<StructuredFactQueryResult> {
   const bundle = await loadRecords(input);
   const result = answerFor({ query: input.query, fields: input.requestedFields, language: input.language, bundle, plan: input.plan });
-  return { ...result, sources: result.explicitFacts.length || result.relationshipsFound ? bundle.sources : [] };
+  // Sources must describe the selected evidence, never every record loaded for
+  // the entity. In particular, an UNKNOWN verification has no supporting
+  // evidence and must not render an unrelated Knowledge Sources card.
+  const selectedSourceKeys = new Set(result.explicitFacts.map((fact) => `${fact.sourceDocumentId}:${fact.sourceChunkId}`));
+  const sources = selectedSourceKeys.size
+    ? bundle.sources.filter((source) => selectedSourceKeys.has(`${source.documentId}:${source.chunkId}`))
+    : [];
+  return { ...result, sources };
 }
 
 export const structuredFactTesting = { answerFor };

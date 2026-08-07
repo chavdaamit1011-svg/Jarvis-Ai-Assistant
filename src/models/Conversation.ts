@@ -9,6 +9,9 @@ const conversationSchema = new Schema({
   activeEntityId: { type: String, default: null },
   activeEntityName: { type: String, default: null, maxlength: 180 },
   activeEntityType: { type: String, default: null, maxlength: 50 },
+  // Derived conversation context only. Raw document content and prompts are
+  // intentionally never persisted here.
+  referenceState: { type: Schema.Types.Mixed, default: null },
 }, { timestamps: true, versionKey: false });
 conversationSchema.index({ updatedAt: -1 });
 conversationSchema.index({ isPinned: -1, updatedAt: -1 });

@@ -1,0 +1,1561 @@
+
+> jarvis-ai-assistant@0.1.0 dev
+> next dev -p 4000
+
+▲ Next.js 16.3.0 (Turbopack)
+- Local:         http://localhost:4000
+- Network:       http://192.168.1.6:4000
+- Environments: .env.local
+✓ Ready in 1532ms
+✓ Running next.config.ts took 86ms
+Creating turbopack project {
+  dir: 'C:\\Users\\chavda amit\\OneDrive\\Desktop\\New folder (2)\\jarvis-ai-assistant',
+  testMode: true
+}
+
+ GET / 200 in 1462ms (next.js: 957ms, application-code: 505ms)
+ GET /api/conversations 200 in 1645ms (next.js: 201ms, application-code: 1444ms)
+ GET /api/conversations 200 in 35ms (next.js: 9ms, application-code: 26ms)
+ GET /api/conversations/6a75a35315906bd7e34eefb1 200 in 2.9s (next.js: 2.9s, application-code: 30ms)
+ GET /api/conversations/6a75a35315906bd7e34eefb1 200 in 55ms (next.js: 34ms, application-code: 22ms)
+ POST /api/conversations 201 in 41ms (next.js: 16ms, application-code: 25ms)
+(node:15996) [MONGOOSE] Warning: `errors` is a reserved schema pathname and may break some functionality. You are allowed to use it, but use at your own risk. To disable this warning pass `suppressReservedKeysWarning` as a schema option.
+(Use `node --trace-warnings ...` to show where the warning was created)
+[API /api/chat] knowledgeMode: public
+(node:15996) [MONGOOSE] Warning: mongoose: Duplicate schema index on {"targetEntityId":1} for model "KnowledgeRelationship". This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(node:15996) [MONGOOSE] Warning: mongoose: Duplicate schema index on {"relationshipType":1} for model "KnowledgeRelationship". This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+(node:15996) [MONGOOSE] Warning: mongoose: Duplicate schema index on {"objectEntityId":1} for model "KnowledgeRelationship". This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+[API /api/chat] trace created { traceId: 'd05858e3-774f-422f-801b-84825d19a05f' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_UNIQUE_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+(node:15996) [MONGOOSE] Warning: mongoose: Duplicate schema index on {"relatedEntityId":1} for model "KnowledgeFact". This is often due to declaring an index using both "index: true" and "schema.index()". Please remove the duplicate index definition.
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'count',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [],
+  outputMode: 'narrative',
+  matchedProjectEntities: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 8,
+  finalSelectedFacts: [
+    'project.relationship: E-Commerce (Sugar Cosmetics)',
+    'project.relationship: E-Commerce (Kisah Ethinic Wear)',
+    'project.relationship: E-Commerce (The Dark Store)'
+  ],
+  finalSelectedValues: [ '3' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 955ms (next.js: 209ms, application-code: 747ms)
+[API /api/chat] trace persisted and returned to client { traceId: 'd05858e3-774f-422f-801b-84825d19a05f' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '57199221-cfba-4e27-ade6-e6e99d895fc3' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'unknown',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [],
+  filters: {},
+  projection: [],
+  outputMode: 'narrative',
+  matchedProjectEntities: [],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 0,
+  finalSelectedFacts: [],
+  finalSelectedValues: [],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: false,
+  ragFallbackUsed: false,
+  notAvailableReason: 'No supported requested fact exists for this entity.',
+  verificationResult: null
+}
+ POST /api/chat 200 in 101ms (next.js: 9ms, application-code: 93ms)
+[API /api/chat] trace persisted and returned to client { traceId: '57199221-cfba-4e27-ade6-e6e99d895fc3' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '3ff6f165-0010-4421-a5c6-ef1752feb7a0' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'SOLE_KNOWLEDGE_PERSON_PROFILE_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'summary',
+  subfield: null,
+  operation: 'descriptive',
+  requestedFields: [ 'summary' ],
+  filters: {},
+  projection: [],
+  outputMode: 'narrative',
+  matchedProjectEntities: [],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 0,
+  finalSelectedFacts: [],
+  finalSelectedValues: [],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: false,
+  ragFallbackUsed: false,
+  notAvailableReason: 'No supported summary fact exists for this entity.',
+  verificationResult: null
+}
+ POST /api/chat 200 in 5.1s (next.js: 5ms, application-code: 5.1s)
+[API /api/chat] trace persisted and returned to client { traceId: '3ff6f165-0010-4421-a5c6-ef1752feb7a0' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '6cfd1333-6495-4160-83b1-f8fd218ac3f5' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'unknown',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [],
+  filters: {},
+  projection: [ 'url' ],
+  outputMode: 'narrative',
+  matchedProjectEntities: [],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 0,
+  finalSelectedFacts: [],
+  finalSelectedValues: [],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: false,
+  ragFallbackUsed: false,
+  notAvailableReason: 'No supported requested fact exists for this entity.',
+  verificationResult: null
+}
+ POST /api/chat 200 in 77ms (next.js: 6ms, application-code: 71ms)
+[API /api/chat] trace persisted and returned to client { traceId: '6cfd1333-6495-4160-83b1-f8fd218ac3f5' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '4d27471b-2f78-4c78-8658-9e27d2580c33' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'unknown',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [],
+  filters: {},
+  projection: [],
+  outputMode: 'narrative',
+  matchedProjectEntities: [],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 0,
+  finalSelectedFacts: [],
+  finalSelectedValues: [],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: false,
+  ragFallbackUsed: false,
+  notAvailableReason: 'No supported requested fact exists for this entity.',
+  verificationResult: null
+}
+ POST /api/chat 200 in 82ms (next.js: 6ms, application-code: 76ms)
+[API /api/chat] trace persisted and returned to client { traceId: '4d27471b-2f78-4c78-8658-9e27d2580c33' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '11a33126-7641-425a-8048-aadb040e5a40' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'relationship_lookup',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [ 'name' ],
+  outputMode: 'narrative',
+  matchedProjectEntities: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  relationshipMatches: [ '6a757a97bfb05f87e5906df6' ],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 4,
+  finalSelectedFacts: [ 'project.name: E-Commerce (Kisah Ethinic Wear)' ],
+  finalSelectedValues: [ 'E-Commerce (Kisah Ethinic Wear)' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 81ms (next.js: 5ms, application-code: 76ms)
+[API /api/chat] trace persisted and returned to client { traceId: '11a33126-7641-425a-8048-aadb040e5a40' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[ConversationEntityManager] {
+  event: 'resolvePronouns:resolved',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: 'Amit Chavda uska URL'
+}
+[API /api/chat] trace created { traceId: 'c4d1ae60-1640-4bf0-aea6-7e97c4fdb81c' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'unknown',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [],
+  filters: {},
+  projection: [ 'url' ],
+  outputMode: 'narrative',
+  matchedProjectEntities: [],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 0,
+  finalSelectedFacts: [],
+  finalSelectedValues: [],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: false,
+  ragFallbackUsed: false,
+  notAvailableReason: 'No supported requested fact exists for this entity.',
+  verificationResult: null
+}
+ POST /api/chat 200 in 76ms (next.js: 5ms, application-code: 71ms)
+[API /api/chat] trace persisted and returned to client { traceId: 'c4d1ae60-1640-4bf0-aea6-7e97c4fdb81c' }
+ GET / 200 in 70ms (next.js: 16ms, application-code: 54ms)
+ GET / 200 in 44ms (next.js: 11ms, application-code: 33ms)
+ POST /api/conversations 201 in 20ms (next.js: 5ms, application-code: 15ms)
+[API /api/chat] knowledgeMode: public
+[API /api/chat] trace created { traceId: '6c1cb08f-4aa1-4baf-a85d-fe491b2ccaa6' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_UNIQUE_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'count',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [],
+  outputMode: 'narrative',
+  matchedProjectEntities: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 8,
+  finalSelectedFacts: [
+    'project.relationship: E-Commerce (Sugar Cosmetics)',
+    'project.relationship: E-Commerce (Kisah Ethinic Wear)',
+    'project.relationship: E-Commerce (The Dark Store)'
+  ],
+  finalSelectedValues: [ '3' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 112ms (next.js: 18ms, application-code: 94ms)
+[API /api/chat] trace persisted and returned to client { traceId: '6c1cb08f-4aa1-4baf-a85d-fe491b2ccaa6' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '8cfd1da6-e26c-4c31-974e-e11ee05f4a58' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [],
+  outputMode: 'narrative',
+  matchedProjectEntities: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 8,
+  finalSelectedFacts: [
+    'category: E-Commerce',
+    'description: Built a responsive e-commerce UI with product listing using HTML, CSS, JS. Added Add to Cart, Login/Signup, Wishlist, and Purchase flow functionality',
+    'project_url: https://cosmetic-123.netlify.app/',
+    'category: E-Commerce',
+    'description: Created an E-commerce website using React.js with reusable components, state management, and API integration',
+    'project_url: https://kisah-ecommerce-react-js.vercel.app/',
+    'category: E-Commerce',
+    'description: Created “The Dark Store” E-commerce website using Node.js and MongoDB, featuring secure login, product catalog management, and scalable backend architecture'
+  ],
+  finalSelectedValues: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 86ms (next.js: 5ms, application-code: 82ms)
+[API /api/chat] trace persisted and returned to client { traceId: '8cfd1da6-e26c-4c31-974e-e11ee05f4a58' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '122945cd-3672-451c-b963-6dbb919202b3' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'descriptive',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [],
+  outputMode: 'narrative',
+  matchedProjectEntities: [ 'E-Commerce (Kisah Ethinic Wear)' ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 3,
+  finalSelectedFacts: [
+    'category: E-Commerce',
+    'description: Created an E-commerce website using React.js with reusable components, state management, and API integration',
+    'project_url: https://kisah-ecommerce-react-js.vercel.app/'
+  ],
+  finalSelectedValues: [ 'E-Commerce (Kisah Ethinic Wear)' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 95ms (next.js: 9ms, application-code: 85ms)
+[API /api/chat] trace persisted and returned to client { traceId: '122945cd-3672-451c-b963-6dbb919202b3' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '66cea906-9a88-4e85-b287-71f0e3542e7e' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [ 'url' ],
+  outputMode: 'values_only',
+  matchedProjectEntities: [ 'E-Commerce (Kisah Ethinic Wear)' ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 3,
+  finalSelectedFacts: [ 'project_url: https://kisah-ecommerce-react-js.vercel.app/' ],
+  finalSelectedValues: [ 'https://kisah-ecommerce-react-js.vercel.app/' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 67ms (next.js: 5ms, application-code: 62ms)
+[API /api/chat] trace persisted and returned to client { traceId: '66cea906-9a88-4e85-b287-71f0e3542e7e' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: 'f21b1aaf-3eb9-4f92-bb24-1c480c7b6010' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [],
+  outputMode: 'narrative',
+  matchedProjectEntities: [ 'E-Commerce (Kisah Ethinic Wear)' ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 3,
+  finalSelectedFacts: [
+    'category: E-Commerce',
+    'description: Created an E-commerce website using React.js with reusable components, state management, and API integration',
+    'project_url: https://kisah-ecommerce-react-js.vercel.app/'
+  ],
+  finalSelectedValues: [ 'E-Commerce (Kisah Ethinic Wear)' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 68ms (next.js: 5ms, application-code: 63ms)
+[API /api/chat] trace persisted and returned to client { traceId: 'f21b1aaf-3eb9-4f92-bb24-1c480c7b6010' }
+ GET / 200 in 46ms (next.js: 11ms, application-code: 35ms)
+ GET / 200 in 44ms (next.js: 12ms, application-code: 32ms)
+ POST /api/conversations 201 in 22ms (next.js: 7ms, application-code: 14ms)
+[API /api/chat] knowledgeMode: public
+[API /api/chat] trace created { traceId: 'a5287f33-fc93-4850-967b-3af7ca486e77' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_UNIQUE_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'count',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [],
+  outputMode: 'narrative',
+  matchedProjectEntities: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 8,
+  finalSelectedFacts: [
+    'project.relationship: E-Commerce (Sugar Cosmetics)',
+    'project.relationship: E-Commerce (Kisah Ethinic Wear)',
+    'project.relationship: E-Commerce (The Dark Store)'
+  ],
+  finalSelectedValues: [ '3' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 92ms (next.js: 14ms, application-code: 78ms)
+[API /api/chat] trace persisted and returned to client { traceId: 'a5287f33-fc93-4850-967b-3af7ca486e77' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '929d1333-18fb-4e90-9d85-896710be9cc2' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [ 'name' ],
+  outputMode: 'narrative',
+  matchedProjectEntities: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 8,
+  finalSelectedFacts: [
+    'project.name: E-Commerce (Sugar Cosmetics)',
+    'project.name: E-Commerce (Kisah Ethinic Wear)',
+    'project.name: E-Commerce (The Dark Store)'
+  ],
+  finalSelectedValues: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 80ms (next.js: 4ms, application-code: 76ms)
+[API /api/chat] trace persisted and returned to client { traceId: '929d1333-18fb-4e90-9d85-896710be9cc2' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '9ee9d091-b93b-4809-80b8-7611a6d87917' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [ 'name' ],
+  outputMode: 'narrative',
+  matchedProjectEntities: [ 'E-Commerce (Kisah Ethinic Wear)' ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 3,
+  finalSelectedFacts: [ 'project.name: E-Commerce (Kisah Ethinic Wear)' ],
+  finalSelectedValues: [ 'E-Commerce (Kisah Ethinic Wear)' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 94ms (next.js: 5ms, application-code: 90ms)
+[API /api/chat] trace persisted and returned to client { traceId: '9ee9d091-b93b-4809-80b8-7611a6d87917' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: 'f5af5461-e803-4c35-8775-5ec416e73254' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [ 'url' ],
+  outputMode: 'values_only',
+  matchedProjectEntities: [ 'E-Commerce (Kisah Ethinic Wear)' ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 3,
+  finalSelectedFacts: [ 'project_url: https://kisah-ecommerce-react-js.vercel.app/' ],
+  finalSelectedValues: [ 'https://kisah-ecommerce-react-js.vercel.app/' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 65ms (next.js: 5ms, application-code: 60ms)
+[API /api/chat] trace persisted and returned to client { traceId: 'f5af5461-e803-4c35-8775-5ec416e73254' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '20d89581-986b-4eb7-a503-7fdc69365af5' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [ 'name' ],
+  outputMode: 'narrative',
+  matchedProjectEntities: [ 'E-Commerce (Sugar Cosmetics)', 'E-Commerce (The Dark Store)' ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 5,
+  finalSelectedFacts: [
+    'project.name: E-Commerce (Sugar Cosmetics)',
+    'project.name: E-Commerce (The Dark Store)'
+  ],
+  finalSelectedValues: [ 'E-Commerce (Sugar Cosmetics)', 'E-Commerce (The Dark Store)' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 66ms (next.js: 4ms, application-code: 62ms)
+[API /api/chat] trace persisted and returned to client { traceId: '20d89581-986b-4eb7-a503-7fdc69365af5' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '9147090d-5f0e-41ca-93b1-5b3dc8ba3c1d' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'relationship_lookup',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [ 'name' ],
+  outputMode: 'narrative',
+  matchedProjectEntities: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  relationshipMatches: [ '6a757a97bfb05f87e5906df6' ],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 4,
+  finalSelectedFacts: [ 'project.name: E-Commerce (Kisah Ethinic Wear)' ],
+  finalSelectedValues: [ 'E-Commerce (Kisah Ethinic Wear)' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 66ms (next.js: 5ms, application-code: 61ms)
+[API /api/chat] trace persisted and returned to client { traceId: '9147090d-5f0e-41ca-93b1-5b3dc8ba3c1d' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[ConversationEntityManager] {
+  event: 'resolvePronouns:resolved',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: 'Amit Chavda uska URL'
+}
+[API /api/chat] trace created { traceId: '7cdb8575-e13d-4ec7-9f21-b1caf2c8dbc0' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [ 'url' ],
+  outputMode: 'values_only',
+  matchedProjectEntities: [ 'E-Commerce (Sugar Cosmetics)' ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 3,
+  finalSelectedFacts: [ 'project_url: https://cosmetic-123.netlify.app/' ],
+  finalSelectedValues: [ 'https://cosmetic-123.netlify.app/' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 65ms (next.js: 4ms, application-code: 62ms)
+[API /api/chat] trace persisted and returned to client { traceId: '7cdb8575-e13d-4ec7-9f21-b1caf2c8dbc0' }
+ GET / 200 in 51ms (next.js: 14ms, application-code: 37ms)
+ POST /api/conversations 201 in 20ms (next.js: 5ms, application-code: 15ms)
+[API /api/chat] knowledgeMode: public
+[API /api/chat] trace created { traceId: '86102a4d-dbf5-4cd7-af8b-3a3149cd973c' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_UNIQUE_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'count',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [],
+  outputMode: 'narrative',
+  matchedProjectEntities: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 8,
+  finalSelectedFacts: [
+    'project.relationship: E-Commerce (Sugar Cosmetics)',
+    'project.relationship: E-Commerce (Kisah Ethinic Wear)',
+    'project.relationship: E-Commerce (The Dark Store)'
+  ],
+  finalSelectedValues: [ '3' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 89ms (next.js: 18ms, application-code: 71ms)
+[API /api/chat] trace persisted and returned to client { traceId: '86102a4d-dbf5-4cd7-af8b-3a3149cd973c' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '7b977ec8-2029-4c6e-93d6-0fe61bbf087a' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'relationship_lookup',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [ 'name' ],
+  outputMode: 'narrative',
+  matchedProjectEntities: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  relationshipMatches: [ '6a757a97bfb05f87e5906df6' ],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 4,
+  finalSelectedFacts: [ 'project.name: E-Commerce (Kisah Ethinic Wear)' ],
+  finalSelectedValues: [ 'E-Commerce (Kisah Ethinic Wear)' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 82ms (next.js: 5ms, application-code: 77ms)
+[API /api/chat] trace persisted and returned to client { traceId: '7b977ec8-2029-4c6e-93d6-0fe61bbf087a' }
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[ConversationEntityManager] {
+  event: 'resolvePronouns:resolved',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: 'Amit Chavda uska URL'
+}
+[API /api/chat] trace created { traceId: '449c4ae9-4f51-4236-8e31-5d71e49865e3' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [ 'url' ],
+  outputMode: 'values_only',
+  matchedProjectEntities: [ 'E-Commerce (Kisah Ethinic Wear)' ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 3,
+  finalSelectedFacts: [ 'project_url: https://kisah-ecommerce-react-js.vercel.app/' ],
+  finalSelectedValues: [ 'https://kisah-ecommerce-react-js.vercel.app/' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 76ms (next.js: 5ms, application-code: 71ms)
+[API /api/chat] trace persisted and returned to client { traceId: '449c4ae9-4f51-4236-8e31-5d71e49865e3' }
+ GET / 200 in 131ms (next.js: 13ms, application-code: 118ms)
+ GET /api/conversations 200 in 48ms (next.js: 11ms, application-code: 37ms)
+ GET /api/conversations 200 in 43ms (next.js: 9ms, application-code: 35ms)
+ GET /api/conversations/6a75a35315906bd7e34eefb1 200 in 64ms (next.js: 38ms, application-code: 25ms)
+ GET /api/conversations/6a75a35315906bd7e34eefb1 200 in 38ms (next.js: 9ms, application-code: 29ms)
+ POST /api/conversations/6a75a35315906bd7e34eefb1/messages 201 in 2.8s (next.js: 2.8s, application-code: 29ms)
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'MongoDB',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '9cd9bdc3-e4e5-451a-a10b-d3dc0b10ee8c' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_UNIQUE_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+ POST /api/chat 200 in 57ms (next.js: 7ms, application-code: 50ms)
+[API /api/chat] trace persisted and returned to client { traceId: '9cd9bdc3-e4e5-451a-a10b-d3dc0b10ee8c' }
+ POST /api/conversations/6a75a35315906bd7e34eefb1/messages 201 in 43ms (next.js: 18ms, application-code: 25ms)
+ POST /api/conversations/6a75a35315906bd7e34eefb1/messages 201 in 46ms (next.js: 20ms, application-code: 25ms)
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: '0b423d3c-fe82-4ed8-90b5-9845a3e0fe9c' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_UNIQUE_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'count',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [],
+  outputMode: 'narrative',
+  matchedProjectEntities: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 8,
+  finalSelectedFacts: [
+    'project.relationship: E-Commerce (Sugar Cosmetics)',
+    'project.relationship: E-Commerce (Kisah Ethinic Wear)',
+    'project.relationship: E-Commerce (The Dark Store)'
+  ],
+  finalSelectedValues: [ '3' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 103ms (next.js: 6ms, application-code: 97ms)
+[API /api/chat] trace persisted and returned to client { traceId: '0b423d3c-fe82-4ed8-90b5-9845a3e0fe9c' }
+ POST /api/conversations/6a75a35315906bd7e34eefb1/messages 201 in 35ms (next.js: 7ms, application-code: 28ms)
+ POST /api/conversations/6a75a35315906bd7e34eefb1/messages 201 in 38ms (next.js: 17ms, application-code: 21ms)
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: 'a412da25-6581-4f77-a8b6-d09202473fba' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [ 'name' ],
+  outputMode: 'narrative',
+  matchedProjectEntities: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 8,
+  finalSelectedFacts: [
+    'project.name: E-Commerce (Sugar Cosmetics)',
+    'project.name: E-Commerce (Kisah Ethinic Wear)',
+    'project.name: E-Commerce (The Dark Store)'
+  ],
+  finalSelectedValues: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 112ms (next.js: 7ms, application-code: 105ms)
+[API /api/chat] trace persisted and returned to client { traceId: 'a412da25-6581-4f77-a8b6-d09202473fba' }
+ POST /api/conversations/6a75a35315906bd7e34eefb1/messages 201 in 32ms (next.js: 9ms, application-code: 23ms)
+ POST /api/conversations/6a75a35315906bd7e34eefb1/messages 201 in 37ms (next.js: 18ms, application-code: 19ms)
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: 'afaaf0a9-2d28-4186-a8fe-1d95c32614ee' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'list',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [ 'url' ],
+  outputMode: 'values_only',
+  matchedProjectEntities: [ 'E-Commerce (Sugar Cosmetics)' ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 3,
+  finalSelectedFacts: [ 'project_url: https://cosmetic-123.netlify.app/' ],
+  finalSelectedValues: [ 'https://cosmetic-123.netlify.app/' ],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: true,
+  ragFallbackUsed: false,
+  notAvailableReason: null,
+  verificationResult: null
+}
+ POST /api/chat 200 in 99ms (next.js: 5ms, application-code: 94ms)
+[API /api/chat] trace persisted and returned to client { traceId: 'afaaf0a9-2d28-4186-a8fe-1d95c32614ee' }
+ POST /api/conversations/6a75a35315906bd7e34eefb1/messages 201 in 31ms (next.js: 6ms, application-code: 24ms)
+ POST /api/conversations/6a75a35315906bd7e34eefb1/messages 201 in 36ms (next.js: 16ms, application-code: 20ms)
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: 'b5beca20-10b8-44e3-bdd9-b004c2a1a7a4' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'technology',
+      name: 'MongoDB',
+      id: '6a757a97bfb05f87e5906db3'
+    }
+  ],
+  selectedEntity: 'MongoDB',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'MongoDB',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'summary',
+  subfield: null,
+  operation: 'descriptive',
+  requestedFields: [ 'summary' ],
+  filters: {},
+  projection: [],
+  outputMode: 'narrative',
+  matchedProjectEntities: [],
+  relationshipMatches: [],
+  factsBeforeFiltering: 0,
+  factsAfterFiltering: 0,
+  finalSelectedFacts: [],
+  finalSelectedValues: [],
+  structuredFactsFound: 0,
+  relationshipsFound: 0,
+  structuredAnswerUsed: false,
+  ragFallbackUsed: false,
+  notAvailableReason: 'No supported summary fact exists for this entity.',
+  verificationResult: null
+}
+ POST /api/chat 200 in 5.1s (next.js: 5ms, application-code: 5.1s)
+[API /api/chat] trace persisted and returned to client { traceId: 'b5beca20-10b8-44e3-bdd9-b004c2a1a7a4' }
+ POST /api/conversations/6a75a35315906bd7e34eefb1/messages 201 in 39ms (next.js: 18ms, application-code: 20ms)
+ POST /api/conversations/6a75a35315906bd7e34eefb1/messages 201 in 41ms (next.js: 18ms, application-code: 23ms)
+[API /api/chat] knowledgeMode: public
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'MongoDB',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] trace created { traceId: 'e4a02957-8214-461c-b92a-07bda9f75126' }
+[API /api/chat] pre-routing entity resolution {
+  entityCandidates: [
+    {
+      type: 'person',
+      name: 'Amit Chavda',
+      id: '6a757a97bfb05f87e5906da9'
+    }
+  ],
+  selectedEntity: 'Amit Chavda',
+  candidateCount: 1,
+  autoSelected: true,
+  clarificationNeeded: false,
+  reason: 'KNOWLEDGE_ENTITY_FULL_NAME_AUTO_SELECTED'
+}
+[ConversationEntityManager] {
+  event: 'setActiveEntity',
+  activeEntity: 'Amit Chavda',
+  entityType: 'person',
+  resolvedQuery: undefined
+}
+[API /api/chat] structured fact query {
+  semanticConcept: 'projects',
+  subfield: null,
+  operation: 'relationship_lookup',
+  requestedFields: [ 'projects' ],
+  filters: {},
+  projection: [ 'name' ],
+  outputMode: 'narrative',
+  matchedProjectEntities: [
+    'E-Commerce (Sugar Cosmetics)',
+    'E-Commerce (Kisah Ethinic Wear)',
+    'E-Commerce (The Dark Store)'
+  ],
+  relationshipMatches: [],
+  factsBeforeFiltering: 29,
+  factsAfterFiltering: 0,
+  finalSelectedFacts: [],
+  finalSelectedValues: [],
+  structuredFactsFound: 29,
+  relationshipsFound: 18,
+  structuredAnswerUsed: false,
+  ragFallbackUsed: false,
+  notAvailableReason: 'No supported projects fact exists for this entity.',
+  verificationResult: null
+}
+ POST /api/chat 200 in 5.1s (next.js: 7ms, application-code: 5.1s)
+[API /api/chat] trace persisted and returned to client { traceId: 'e4a02957-8214-461c-b92a-07bda9f75126' }
+ POST /api/conversations/6a75a35315906bd7e34eefb1/messages 201 in 40ms (next.js: 19ms, application-code: 21ms)
