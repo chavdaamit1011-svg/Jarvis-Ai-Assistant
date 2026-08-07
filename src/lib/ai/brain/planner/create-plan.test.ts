@@ -51,3 +51,21 @@ test('creates one canonical semantic plan for equivalent request shapes', async 
   assert.equal(subset.concept, 'skills');
   assert.equal(subset.filters?.category, 'backend');
 });
+
+test('represents a yes/no proposition as a verification plan without database access', async () => {
+  const plan = await createPlan({ query: 'Does Nora Vela live in Surat?', entityHints: [{ type: 'person', name: 'Nora Vela', id: 'nora' }] });
+  assert.equal(plan.operation, 'verify');
+  assert.equal(plan.concept, 'location');
+  assert.deepEqual(plan.arguments.verification, {
+    text: 'Does Nora Vela live in Surat', expectedValue: 'Surat', valueKind: 'scalar',
+  });
+});
+
+test('represents a generic work-on relationship as a verification plan', async () => {
+  const plan = await createPlan({ query: 'Does Nora Vela work on OrbitPay?', entityHints: [{ type: 'person', name: 'Nora Vela', id: 'nora' }] });
+  assert.equal(plan.operation, 'verify');
+  assert.equal(plan.concept, 'projects');
+  assert.deepEqual(plan.arguments.verification, {
+    text: 'Does Nora Vela work on OrbitPay', expectedValue: 'OrbitPay', valueKind: 'relationship',
+  });
+});

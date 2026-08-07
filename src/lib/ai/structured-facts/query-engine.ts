@@ -2,15 +2,16 @@ import type { DetectedResponseLanguage } from '@/lib/ai/response-language';
 import { normalizeText } from '@/lib/ai/brain/normalizer/normalize-text';
 import type { ExecutionPlan } from '@/lib/ai/brain/executor';
 
-type FactRecord = { _id: unknown; entityId: unknown; field: string; value: unknown; sourceDocumentId?: unknown; documentId: unknown; sourceChunkId?: unknown; chunkId: unknown; sourceSectionId?: unknown; sourceText: string; confidence: number; isConflicting?: boolean; status?: string };
+type FactRecord = { _id: unknown; entityId: unknown; field: string; predicate?: string; value: unknown; sourceDocumentId?: unknown; documentId: unknown; sourceChunkId?: unknown; chunkId: unknown; sourceSectionId?: unknown; sourceText: string; confidence: number; isConflicting?: boolean; status?: string };
 type RelationshipRecord = { _id: unknown; subjectEntityId?: unknown; sourceEntityId: unknown; relation?: string; relationshipType: string; objectEntityId?: unknown; targetEntityId: unknown; sourceDocumentId?: unknown; documentId: unknown; sourceChunkId?: unknown; chunkId: unknown; sourceText: string; confidence: number; isConflicting?: boolean; qualifiers?: Record<string, unknown> };
 type EntityRecord = { _id: unknown; canonicalName: string; entityType: string; aliases?: string[] };
 
 export type StructuredSource = { documentId: string; chunkId: string; documentTitle: string; chunkIndex: number; score: number };
 export type StructuredEvidence = { id: string; field: string; value: string; sourceDocumentId: string; sourceChunkId: string; sourceText: string; confidence: number; explicit: boolean };
+export type VerificationResult = 'true' | 'false' | 'unknown';
 export type StructuredFactQueryResult = {
   status: 'answer' | 'partial' | 'none';
-  operation: 'exact' | 'list' | 'count' | 'status' | 'period' | 'relationship' | 'relationship_lookup' | 'descriptive' | 'unknown';
+  operation: 'exact' | 'list' | 'count' | 'status' | 'period' | 'relationship' | 'relationship_lookup' | 'descriptive' | 'verify' | 'unknown';
   requestedFields: string[];
   structuredFactsFound: number;
   relationshipsFound: number;
@@ -34,6 +35,13 @@ export type StructuredFactQueryResult = {
   matchedProjectEntities: string[];
   relationshipMatches: string[];
   finalSelectedValues: string[];
+  verification?: {
+    result: VerificationResult;
+    claim: string;
+    observedValue?: string | number | null;
+    matchedEvidence: StructuredEvidence[];
+    contradictingEvidence: StructuredEvidence[];
+  };
 };
 
 type RecordBundle = { entity: EntityRecord | null; facts: FactRecord[]; relationships: RelationshipRecord[]; projectRelationships: RelationshipRecord[]; targets: EntityRecord[]; targetFacts: FactRecord[]; sources: StructuredSource[] };
@@ -45,7 +53,7 @@ type QueryInput = {
   entityName?: string;
   language: DetectedResponseLanguage;
   visibility?: 'public' | 'private';
-  plan?: Pick<ExecutionPlan, 'concept' | 'operation' | 'filters' | 'projection' | 'outputMode' | 'references'>;
+  plan?: Pick<ExecutionPlan, 'concept' | 'operation' | 'filters' | 'projection' | 'outputMode' | 'references' | 'arguments'>;
 };
 
 const text = (value: unknown) => Array.isArray(value) ? value.map(String).join(', ') : String(value ?? '').trim();
@@ -120,7 +128,7 @@ function scopeFromPlan(plan: NonNullable<QueryInput['plan']>, fields: string[]):
   if (state === 'completed') filters.status = 'completed';
   if (typeof rawFilters.category === 'string') filters.category = rawFilters.category;
   const operation = plan.operation === 'reverse_lookup' ? 'relationship_lookup'
-    : ['lookup', 'count', 'list', 'filter', 'summarize'].includes(plan.operation ?? '')
+    : ['lookup', 'count', 'list', 'filter', 'summarize', 'verify'].includes(plan.operation ?? '')
       ? (plan.operation === 'lookup' ? 'exact' : plan.operation === 'summarize' ? 'descriptive' : plan.operation as StructuredFactQueryResult['operation'])
       : 'unknown';
   const plannedConcept = plan.concept && plan.concept !== 'knowledge' ? plan.concept : intentFor('', fields);
@@ -213,6 +221,73 @@ function findTechnologyIdsInQuery(query: string, technologies: EntityRecord[]) {
   }).map((technology) => id(technology._id)));
 }
 
+function valueMatches(expected: string | number, observed: string) {
+  const wanted = normalizeLookup(String(expected));
+  const actual = normalizeLookup(observed);
+  return Boolean(wanted && actual && (wanted === actual || actual.includes(wanted) || wanted.includes(actual)));
+}
+
+function verifyFromStoredKnowledge(input: {
+  bundle: RecordBundle;
+  intent: string;
+  plan?: QueryInput['plan'];
+}): NonNullable<StructuredFactQueryResult['verification']> {
+  const { bundle, intent, plan } = input;
+  const verification = plan?.arguments?.verification as { text?: unknown; expectedValue?: unknown; valueKind?: unknown } | undefined;
+  const claim = typeof verification?.text === 'string' ? verification.text : '';
+  const expected = typeof verification?.expectedValue === 'string' || typeof verification?.expectedValue === 'number' ? verification.expectedValue : null;
+  const facts = bundle.facts.filter((fact) => fact.status !== 'rejected' && !fact.isConflicting);
+  const relationships = bundle.relationships.filter((relationship) => !relationship.isConflicting);
+  const projectRelations = relationships.filter((relationship) => ['WORKED_ON', 'BUILT', 'CREATED'].includes(relationship.relation ?? relationship.relationshipType));
+
+  if (intent === 'projects' && verification?.valueKind === 'count') {
+    const projects = unique(projectRelations.map((relationship) => id(relationship.objectEntityId ?? relationship.targetEntityId)));
+    const countEvidence = projectRelations.map((relationship) => ({
+      id: id(relationship._id), field: 'project.relationship',
+      value: bundle.targets.find((target) => id(target._id) === id(relationship.objectEntityId ?? relationship.targetEntityId))?.canonicalName ?? '',
+      sourceDocumentId: id(relationship.sourceDocumentId ?? relationship.documentId), sourceChunkId: id(relationship.sourceChunkId ?? relationship.chunkId), sourceText: relationship.sourceText, confidence: relationship.confidence, explicit: true,
+    }));
+    if (expected === null || !countEvidence.length) return { result: 'unknown', claim, observedValue: projects.length || null, matchedEvidence: [], contradictingEvidence: [] };
+    return Number(expected) === projects.length
+      ? { result: 'true', claim, observedValue: projects.length, matchedEvidence: countEvidence, contradictingEvidence: [] }
+      : { result: 'false', claim, observedValue: projects.length, matchedEvidence: [], contradictingEvidence: countEvidence };
+  }
+
+  if (intent === 'projects' && verification?.valueKind === 'relationship') {
+    const projectEvidence = projectRelations.map((relationship) => ({
+      id: id(relationship._id), field: 'project.relationship',
+      value: bundle.targets.find((target) => id(target._id) === id(relationship.objectEntityId ?? relationship.targetEntityId))?.canonicalName ?? '',
+      sourceDocumentId: id(relationship.sourceDocumentId ?? relationship.documentId), sourceChunkId: id(relationship.sourceChunkId ?? relationship.chunkId), sourceText: relationship.sourceText, confidence: relationship.confidence, explicit: true,
+    }));
+    if (!projectEvidence.length || expected === null) return { result: 'unknown', claim, matchedEvidence: [], contradictingEvidence: [] };
+    const matches = projectEvidence.filter((candidate) => valueMatches(expected, candidate.value));
+    return matches.length
+      ? { result: 'true', claim, matchedEvidence: matches, contradictingEvidence: [] }
+      : { result: 'false', claim, matchedEvidence: [], contradictingEvidence: projectEvidence };
+  }
+
+  const relevantFacts = intent === 'location' ? facts.filter((fact) => fact.field.startsWith('location.'))
+    : intent === 'education' ? facts.filter((fact) => fact.field.startsWith('education.'))
+      : intent === 'birthdate' ? facts.filter((fact) => /birth.?date|dob/i.test(fact.field))
+        : intent === 'technology' ? []
+          : intent === 'ownership' ? facts.filter((fact) => /owner|ownership|founder|creator/i.test(`${fact.field} ${fact.predicate ?? ''} ${text(fact.value)} ${fact.sourceText}`))
+            : facts;
+  const factEvidence = evidence(relevantFacts);
+  const relationEvidence = relationships
+    .filter((relationship) => intent === 'ownership' ? /OWNER|OWN|FOUNDER|CREATOR/i.test(relationship.relation ?? relationship.relationshipType) : intent === 'technology' ? (relationship.relation ?? relationship.relationshipType) === 'USES_TECHNOLOGY' : false)
+    .map((relationship) => ({
+      id: id(relationship._id), field: `relationship.${relationship.relation ?? relationship.relationshipType}`,
+      value: bundle.targets.find((target) => id(target._id) === id(relationship.objectEntityId ?? relationship.targetEntityId))?.canonicalName ?? '',
+      sourceDocumentId: id(relationship.sourceDocumentId ?? relationship.documentId), sourceChunkId: id(relationship.sourceChunkId ?? relationship.chunkId), sourceText: relationship.sourceText, confidence: relationship.confidence, explicit: true,
+    }));
+  const candidates = [...factEvidence, ...relationEvidence];
+  if (!candidates.length || expected === null) return { result: 'unknown', claim, matchedEvidence: [], contradictingEvidence: [] };
+  const matches = candidates.filter((candidate) => valueMatches(expected, candidate.value));
+  return matches.length
+    ? { result: 'true', claim, matchedEvidence: matches, contradictingEvidence: [] }
+    : { result: 'false', claim, matchedEvidence: [], contradictingEvidence: candidates };
+}
+
 function answerFor(input: { query: string; fields: string[]; language: DetectedResponseLanguage; bundle: RecordBundle; plan?: QueryInput['plan'] }): Omit<StructuredFactQueryResult, 'sources'> {
   const { query, fields, language, bundle, plan } = input;
   const normalizedQuery = normalizeText(query).cleanedQuery;
@@ -225,6 +300,21 @@ function answerFor(input: { query: string; fields: string[]; language: DetectedR
   const name = bundle.entity?.canonicalName ?? 'The entity';
 
   if (!bundle.entity) return { ...base, status: 'none' as const, notAvailableReason: 'No resolved entity was supplied.' };
+  if (operation === 'verify') {
+    const verification = verifyFromStoredKnowledge({ bundle, intent, plan });
+    const selected = verification.result === 'true' ? verification.matchedEvidence : verification.contradictingEvidence;
+    return {
+      ...base,
+      status: 'answer' as const,
+      explicitFacts: selected,
+      structuredAnswerUsed: true,
+      factsAfterFiltering: selected.length,
+      finalSelectedFacts: selected.map((fact) => `${fact.field}: ${fact.value}`),
+      finalSelectedValues: selected.map((fact) => fact.value),
+      verification,
+      notAvailableReason: verification.result === 'unknown' ? unavailableReason(intent) : null,
+    };
+  }
   if (intent === 'birthdate') return { ...base, status: 'none' as const, notAvailableReason: unavailableReason(intent), finalUnavailable: true };
   // Do not send an explicitly entity-scoped but unsupported personal field to
   // semantic RAG. RAG can supplement descriptive fields, but it must not turn

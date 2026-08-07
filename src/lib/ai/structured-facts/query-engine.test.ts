@@ -182,11 +182,39 @@ test('executes the supplied canonical plan instead of reclassifying the raw word
     bundle: bundle(),
     plan: {
       concept: 'education', operation: 'lookup', filters: { state: 'current' },
-      projection: ['education.degree'], outputMode: 'only_requested_fields', references: [],
+      projection: ['education.degree'], outputMode: 'only_requested_fields', references: [], arguments: {},
     },
   });
   assert.equal(result.status, 'answer');
   assert.match(result.answer ?? '', /Master of Computer Application/);
   assert.doesNotMatch(result.answer ?? '', /Bachelor of Commerce/);
   assert.deepEqual(result.filters.status, ['pursuing', 'active', 'attending']);
+});
+
+const verificationPlan = (concept: string, expectedValue: string | number | null, valueKind: string) => ({
+  concept, operation: 'verify', filters: {}, projection: [], outputMode: 'narrative' as const,
+  references: [], arguments: { verification: { text: 'verification claim', expectedValue, valueKind } },
+});
+
+test('verifies source-backed scalar facts, counts, relationships, and unknown facts deterministically', () => {
+  const verify = (concept: string, expectedValue: string | number | null, valueKind: string) => structuredFactTesting.answerFor({
+    query: 'irrelevant wording', fields: concept === 'projects' ? ['projects'] : [], language: 'english', bundle: bundle(),
+    plan: verificationPlan(concept, expectedValue, valueKind),
+  });
+  const trueLocation = verify('location', 'Surat', 'scalar');
+  assert.equal(trueLocation.verification?.result, 'true');
+  assert.match(trueLocation.explicitFacts[0]?.value ?? '', /Surat/);
+
+  const falseLocation = verify('location', 'Mumbai', 'scalar');
+  assert.equal(falseLocation.verification?.result, 'false');
+  assert.match(falseLocation.explicitFacts.map((fact) => fact.value).join(', '), /Surat/);
+
+  const missing = verify('birthdate', '10 January 2000', 'date');
+  assert.equal(missing.verification?.result, 'unknown');
+
+  const falseCount = verify('projects', 5, 'count');
+  assert.equal(falseCount.verification?.result, 'false');
+
+  const trueRelationship = verify('projects', 'Storefront Two', 'relationship');
+  assert.equal(trueRelationship.verification?.result, 'true');
 });

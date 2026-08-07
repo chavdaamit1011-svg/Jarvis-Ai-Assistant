@@ -36,7 +36,25 @@ export function composeDeterministically(input: AnswerInput): ComposedAnswer {
     return { text: explanation || unavailable(language, 'utility'), answerSource: 'tool', usedFacts: evidence.facts, usedUrls: [], citations: [], confidence: evidence.confidence, warnings: evidence.warnings, language };
   }
   if (evidence.source === 'web') return { text: unavailable(language, 'live web'), answerSource: 'web', usedFacts: [], usedUrls: [], citations: [], confidence: evidence.confidence, warnings: evidence.warnings, language };
-  const structuredData = evidence.metadata.data && typeof evidence.metadata.data === 'object' ? evidence.metadata.data as { entityName?: string | null; selectedValues?: unknown } : null;
+  const structuredData = evidence.metadata.data && typeof evidence.metadata.data === 'object' ? evidence.metadata.data as {
+    entityName?: string | null;
+    selectedValues?: unknown;
+    verification?: { result?: 'true' | 'false' | 'unknown'; claim?: string; observedValue?: string | number | null } | null;
+  } : null;
+  if (evidence.source === 'knowledge' && plan.operation === 'verify') {
+    const result = structuredData?.verification?.result ?? 'unknown';
+    const values = unique(evidence.facts);
+    const english = language.toLowerCase().includes('english');
+    const prefix = english ? result.toUpperCase() : result === 'true' ? 'Haan' : result === 'false' ? 'Nahi' : 'Maloom nahi';
+    const observedCount = structuredData?.verification?.observedValue;
+    const detail = typeof observedCount === 'number'
+      ? english ? ` — supported count is ${observedCount}.` : ` — supported count ${observedCount} hai.`
+      : values.length ? ` — ${values.join(', ')}` : '';
+    const text = result === 'unknown'
+      ? english ? 'UNKNOWN — Uploaded knowledge does not contain enough evidence to verify this claim.' : 'Maloom nahi — Uploaded knowledge mein is claim ko verify karne ke liye sufficient evidence available nahi hai.'
+      : `${prefix}${detail}`;
+    return { text, answerSource: 'knowledge', usedFacts: values, usedUrls: [], citations: evidence.citations, confidence: evidence.confidence, warnings: evidence.warnings, language };
+  }
   if (evidence.source === 'knowledge' && plan.operation === 'count') {
     const selected = Array.isArray(structuredData?.selectedValues) ? structuredData.selectedValues : [];
     const count = String(selected[0] ?? evidence.facts.length);

@@ -341,6 +341,10 @@ export async function POST(req: Request) {
               ragFallbackUsed: structured.ragFallbackUsed,
               notAvailableReason: structured.notAvailableReason,
               finalUnavailable: structured.finalUnavailable,
+              verificationResult: structured.verification?.result ?? null,
+              claim: structured.verification?.claim ?? null,
+              matchedEvidence: structured.verification?.matchedEvidence.map((fact) => fact.id) ?? [],
+              contradictingEvidence: structured.verification?.contradictingEvidence.map((fact) => fact.id) ?? [],
             },
           });
           if (process.env.NODE_ENV !== 'production') console.info('[API /api/chat] structured fact query', {
@@ -362,18 +366,19 @@ export async function POST(req: Request) {
             structuredAnswerUsed: structured.structuredAnswerUsed,
             ragFallbackUsed: structured.ragFallbackUsed,
             notAvailableReason: structured.notAvailableReason,
+            verificationResult: structured.verification?.result ?? null,
           });
           // Structured retrieval produces source-backed evidence only.  It is
           // intentionally not allowed to construct a user-visible response;
           // structured and hybrid paths converge below through the same
           // Evidence Builder → Composer → Validator pipeline.
-          if (structured.status === 'answer' && structured.explicitFacts.length) {
+          if (structured.status === 'answer' && (structured.explicitFacts.length || structured.verification)) {
             const registry = createDefaultCapabilityRegistry({
               knowledge: async () => ({
                 status: 'success' as const,
                 capability: 'knowledge' as const,
                 answerSource: 'structured_data' as const,
-                data: { entityName: entity?.name ?? null, selectedValues: structured.finalSelectedValues },
+                data: { entityName: entity?.name ?? null, selectedValues: structured.finalSelectedValues, verification: structured.verification ?? null },
                 supportedFacts: structured.explicitFacts,
                 sources: structured.sources,
                 conflicts: [],
@@ -389,6 +394,8 @@ export async function POST(req: Request) {
                   filters: executionPlan.filters ?? {},
                   projection: executionPlan.projection ?? [],
                   outputMode: executionPlan.outputMode ?? 'narrative',
+                  verificationResult: structured.verification?.result ?? null,
+                  claim: structured.verification?.claim ?? null,
                 },
               }),
             });
@@ -399,7 +406,7 @@ export async function POST(req: Request) {
               registry,
             });
             const validation = pipeline.validationResult;
-            if (pipeline.status === 'success' && validation?.decision !== 'reject' && pipeline.evidence?.facts.length) {
+            if (pipeline.status === 'success' && validation?.decision !== 'reject' && (pipeline.evidence?.facts.length || structured.verification?.result === 'unknown')) {
               return new Response(pipeline.finalCandidateAnswer, {
                 headers: answerHeaders({
                   answerSource: 'structured-data', usedFallback: false, confidence: validation?.confidence ?? 0,

@@ -18,9 +18,10 @@ export function validateAnswer(input: AnswerValidationInput): AnswerValidationRe
   exactValueErrors.forEach((error) => issues.push(issue('EXACT_VALUE_ERROR', error, 'high')));
   let unsupportedClaims: string[] = [];
   if (evidence.source === 'knowledge') {
-    if (!composedAnswer.citations.length) issues.push(issue('MISSING_KNOWLEDGE_SOURCES', 'Knowledge answers must include source citations.', 'high'));
-    unsupportedClaims = findUnsupportedClaims(composedAnswer.text, evidence);
-    if (hasSkillsAsProjectClaim(composedAnswer.text, evidence)) unsupportedClaims.push('Project claim is not directly supported by project evidence.');
+    const verificationUnknown = plan.operation === 'verify' && /^(?:UNKNOWN|Maloom nahi)\b/i.test(composedAnswer.text);
+    if (!composedAnswer.citations.length && !verificationUnknown) issues.push(issue('MISSING_KNOWLEDGE_SOURCES', 'Knowledge answers must include source citations.', 'high'));
+    unsupportedClaims = plan.operation === 'verify' ? [] : findUnsupportedClaims(composedAnswer.text, evidence);
+    if (plan.operation !== 'verify' && hasSkillsAsProjectClaim(composedAnswer.text, evidence)) unsupportedClaims.push('Project claim is not directly supported by project evidence.');
     unsupportedClaims = [...new Set(unsupportedClaims)];
     unsupportedClaims.forEach((claim) => issues.push(issue('UNSUPPORTED_CLAIM', claim, 'high')));
     if (plan.requestedFields.includes('projects') && !evidence.facts.some((fact) => /\b(?:project|e-commerce|application|website|store|built|created|developed)\b/i.test(fact))) missingRequiredFacts.push('supported project information');
