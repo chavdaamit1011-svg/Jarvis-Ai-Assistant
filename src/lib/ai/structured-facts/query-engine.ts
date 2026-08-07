@@ -1,5 +1,6 @@
 import type { DetectedResponseLanguage } from '@/lib/ai/response-language';
 import { normalizeText } from '@/lib/ai/brain/normalizer/normalize-text';
+import type { ExecutionPlan } from '@/lib/ai/brain/executor';
 
 type FactRecord = { _id: unknown; entityId: unknown; field: string; value: unknown; sourceDocumentId?: unknown; documentId: unknown; sourceChunkId?: unknown; chunkId: unknown; sourceSectionId?: unknown; sourceText: string; confidence: number; isConflicting?: boolean; status?: string };
 type RelationshipRecord = { _id: unknown; subjectEntityId?: unknown; sourceEntityId: unknown; relation?: string; relationshipType: string; objectEntityId?: unknown; targetEntityId: unknown; sourceDocumentId?: unknown; documentId: unknown; sourceChunkId?: unknown; chunkId: unknown; sourceText: string; confidence: number; isConflicting?: boolean; qualifiers?: Record<string, unknown> };
@@ -36,7 +37,16 @@ export type StructuredFactQueryResult = {
 };
 
 type RecordBundle = { entity: EntityRecord | null; facts: FactRecord[]; relationships: RelationshipRecord[]; projectRelationships: RelationshipRecord[]; targets: EntityRecord[]; targetFacts: FactRecord[]; sources: StructuredSource[] };
-type QueryInput = { query: string; requestedFields: string[]; entityId?: string; entityName?: string; language: DetectedResponseLanguage; visibility?: 'public' | 'private' };
+type QueryInput = {
+  /** `query` is retained only for legacy callers. V2 supplies `plan`. */
+  query: string;
+  requestedFields: string[];
+  entityId?: string;
+  entityName?: string;
+  language: DetectedResponseLanguage;
+  visibility?: 'public' | 'private';
+  plan?: Pick<ExecutionPlan, 'concept' | 'operation' | 'filters' | 'projection' | 'outputMode' | 'references'>;
+};
 
 const text = (value: unknown) => Array.isArray(value) ? value.map(String).join(', ') : String(value ?? '').trim();
 const unique = <T>(values: T[]) => [...new Set(values)];
@@ -100,6 +110,35 @@ function scopeFor(query: string, fields: string[]): StructuredScope {
   return { semanticConcept, subfield, operation, filters, projection };
 }
 
+function scopeFromPlan(plan: NonNullable<QueryInput['plan']>, fields: string[]): StructuredScope {
+  const rawFilters = plan.filters ?? {};
+  const state = rawFilters.state;
+  const filters: StructuredScope['filters'] = { ...rawFilters } as StructuredScope['filters'];
+  // Storage uses factual statuses; the planner's generic current-state signal
+  // maps to those values without reinterpreting the user sentence here.
+  if (state === 'current') filters.status = ['pursuing', 'active', 'attending'];
+  if (state === 'completed') filters.status = 'completed';
+  if (typeof rawFilters.category === 'string') filters.category = rawFilters.category;
+  const operation = plan.operation === 'reverse_lookup' ? 'relationship_lookup'
+    : ['lookup', 'count', 'list', 'filter', 'summarize'].includes(plan.operation ?? '')
+      ? (plan.operation === 'lookup' ? 'exact' : plan.operation === 'summarize' ? 'descriptive' : plan.operation as StructuredFactQueryResult['operation'])
+      : 'unknown';
+  const plannedConcept = plan.concept && plan.concept !== 'knowledge' ? plan.concept : intentFor('', fields);
+  // Planner fields use user-facing semantic labels; graph relationships use a
+  // single technology concept. This is a vocabulary mapping, not a document
+  // or question-specific interpretation.
+  const semanticConcept = plannedConcept === 'skills' || plannedConcept === 'technologies' ? 'technology' : plannedConcept;
+  const category = typeof rawFilters.category === 'string' ? rawFilters.category : null;
+  const subfield = category === 'backend' || category === 'frontend' || category === 'language' ? (category === 'language' ? 'languages' : category) : null;
+  return {
+    semanticConcept,
+    subfield,
+    operation,
+    filters,
+    projection: plan.projection ?? [],
+  };
+}
+
 function relationshipTechnologyCategory(relationship: RelationshipRecord) {
   const source = `${relationship.sourceText} ${JSON.stringify(relationship.qualifiers ?? {})}`.toLowerCase();
   if (/\b(?:front[ -]?end|client[ -]?side|ui)\b/.test(source)) return 'frontend';
@@ -145,19 +184,6 @@ function evidence(records: FactRecord[]) {
   return records.map((record) => ({ id: id(record._id), field: record.field, value: text(record.value), sourceDocumentId: id(record.sourceDocumentId ?? record.documentId), sourceChunkId: id(record.sourceChunkId ?? record.chunkId), sourceText: record.sourceText, confidence: record.confidence, explicit: true }));
 }
 
-function relationshipEvidence(records: RelationshipRecord[], targets: EntityRecord[], field: string) {
-  return records.map((record) => ({
-    id: id(record._id),
-    field,
-    value: targets.find((target) => id(target._id) === id(record.objectEntityId ?? record.targetEntityId))?.canonicalName ?? '',
-    sourceDocumentId: id(record.sourceDocumentId ?? record.documentId),
-    sourceChunkId: id(record.sourceChunkId ?? record.chunkId),
-    sourceText: record.sourceText,
-    confidence: record.confidence,
-    explicit: true,
-  }));
-}
-
 function findMatchingProjectIds(query: string, projects: EntityRecord[]) {
   const queryValue = normalizeLookup(query);
   const queryWords = new Set(lookupWords(queryValue).map(stem));
@@ -187,10 +213,10 @@ function findTechnologyIdsInQuery(query: string, technologies: EntityRecord[]) {
   }).map((technology) => id(technology._id)));
 }
 
-function answerFor(input: { query: string; fields: string[]; language: DetectedResponseLanguage; bundle: RecordBundle }): Omit<StructuredFactQueryResult, 'sources'> {
-  const { query, fields, language, bundle } = input;
+function answerFor(input: { query: string; fields: string[]; language: DetectedResponseLanguage; bundle: RecordBundle; plan?: QueryInput['plan'] }): Omit<StructuredFactQueryResult, 'sources'> {
+  const { query, fields, language, bundle, plan } = input;
   const normalizedQuery = normalizeText(query).cleanedQuery;
-  const scope = scopeFor(normalizedQuery, fields);
+  const scope = plan ? scopeFromPlan(plan, fields) : scopeFor(normalizedQuery, fields);
   const intent = scope.semanticConcept;
   const operation = scope.operation;
   const facts = bundle.facts.filter((fact) => fact.status !== 'rejected' && !fact.isConflicting);
@@ -367,7 +393,21 @@ function answerFor(input: { query: string; fields: string[]; language: DetectedR
       : valuesOnly
         ? evidence(selectedFacts.filter((fact) => fact.field === 'project_url'))
         : operation === 'relationship_lookup'
-          ? relationshipEvidence(relationshipMatches, bundle.targets, 'project.uses_technology')
+          ? relationshipMatches.map((relationship) => ({
+              id: id(relationship._id), field: 'project.name',
+              value: bundle.targets.find((target) => id(target._id) === id(relationship.sourceEntityId))?.canonicalName ?? '',
+              sourceDocumentId: id(relationship.sourceDocumentId ?? relationship.documentId),
+              sourceChunkId: id(relationship.sourceChunkId ?? relationship.chunkId),
+              sourceText: relationship.sourceText, confidence: relationship.confidence, explicit: true,
+            }))
+          : scope.projection.includes('name')
+            ? projectRelations.filter((relationship) => finalProjectIds.has(id(relationship.objectEntityId ?? relationship.targetEntityId))).map((relationship) => ({
+                id: id(relationship._id), field: 'project.name',
+                value: bundle.targets.find((target) => id(target._id) === id(relationship.objectEntityId ?? relationship.targetEntityId))?.canonicalName ?? '',
+                sourceDocumentId: id(relationship.sourceDocumentId ?? relationship.documentId),
+                sourceChunkId: id(relationship.sourceChunkId ?? relationship.chunkId),
+                sourceText: relationship.sourceText, confidence: relationship.confidence, explicit: true,
+              }))
           : scope.projection.includes('description')
             ? evidence(selectedFacts.filter((fact) => fact.field === 'description'))
             : evidence(selectedFacts);
@@ -469,7 +509,7 @@ async function loadRecords(input: QueryInput): Promise<RecordBundle> {
 /** Queries only stored, source-backed facts and relationships. It never calls an LLM. */
 export async function queryStructuredFacts(input: QueryInput): Promise<StructuredFactQueryResult> {
   const bundle = await loadRecords(input);
-  const result = answerFor({ query: input.query, fields: input.requestedFields, language: input.language, bundle });
+  const result = answerFor({ query: input.query, fields: input.requestedFields, language: input.language, bundle, plan: input.plan });
   return { ...result, sources: result.explicitFacts.length || result.relationshipsFound ? bundle.sources : [] };
 }
 

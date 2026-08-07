@@ -18,9 +18,19 @@ export type AnswerSource = 'knowledge_graph' | 'structured_data' | 'rag' | 'gene
  */
 export type ExecutionPlan = {
   capability: ExecutorCapability;
+  /**
+   * Canonical semantic query contract.  These values describe the request,
+   * rather than a particular document vocabulary, and are consumed by every
+   * knowledge retrieval strategy.
+   */
+  concept?: string;
   operation: string;
   entities: Array<{ type: string; name: string }>;
   requestedFields: string[];
+  filters?: Record<string, unknown>;
+  projection?: string[];
+  outputMode?: 'narrative' | 'only_requested_fields';
+  references?: Array<{ type: string; value: string }>;
   arguments: Record<string, unknown>;
   responseLanguage: string;
   requiresCurrentInformation: boolean;

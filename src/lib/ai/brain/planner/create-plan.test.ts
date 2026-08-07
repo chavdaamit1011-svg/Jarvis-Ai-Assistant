@@ -29,3 +29,25 @@ test('known entity hints further increase knowledge confidence', async () => {
   assert.equal(withHint.capability, 'knowledge');
   assert.ok(withHint.confidence > withoutHint.confidence);
 });
+
+test('creates one canonical semantic plan for equivalent request shapes', async () => {
+  const hint = [{ type: 'person', name: 'Nora Vela', id: 'nora' }];
+  const count = await createPlan({ query: 'How many projects does Nora Vela have?', entityHints: hint });
+  const countMixed = await createPlan({ query: 'Nora Vela ke kitne projects hai?', entityHints: hint });
+  assert.equal(count.operation, 'count');
+  assert.equal(countMixed.operation, 'count');
+  assert.equal(count.concept, 'projects');
+
+  const names = await createPlan({ query: 'Which project names belong to Nora Vela?', entityHints: hint });
+  assert.equal(names.operation, 'list');
+  assert.deepEqual(names.projection, ['name']);
+
+  const urls = await createPlan({ query: 'Give Nora Vela project links only', entityHints: hint });
+  assert.equal(urls.operation, 'list');
+  assert.deepEqual(urls.projection, ['url']);
+  assert.equal(urls.outputMode, 'only_requested_fields');
+
+  const subset = await createPlan({ query: 'What backend technologies does Nora Vela use?', entityHints: hint });
+  assert.equal(subset.concept, 'skills');
+  assert.equal(subset.filters?.category, 'backend');
+});

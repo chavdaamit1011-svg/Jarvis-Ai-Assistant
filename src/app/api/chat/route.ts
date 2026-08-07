@@ -19,7 +19,7 @@ import { getEntityProfile } from '@/lib/ai/knowledge-index';
 import { buildClarification, detectAmbiguity } from '@/lib/ai/clarification';
 import { lookupKnowledgeGraph } from '@/lib/ai/knowledge-graph';
 import { evaluateKnowledge } from '@/lib/ai/evaluation';
-import { routeCapability, resolveEntityBeforeRouting } from '@/lib/ai/brain';
+import { routeCapability, resolveEntityBeforeRouting, type CapabilityRoute } from '@/lib/ai/brain';
 import { createPlan } from '@/lib/ai/brain/planner';
 import { resolveConversationContext } from '@/lib/ai/brain/context-resolver';
 import { createDefaultCapabilityRegistry } from '@/lib/ai/brain/executor';
@@ -235,7 +235,19 @@ export async function POST(req: Request) {
     } catch {
       // Entity lookup failure must not block general chat.
     }
-    const capability = await routeCapability(latestUserQuestion, { knowledgeMode: requestedStrategy, entityMatches: capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous });
+    // V2 owns live interpretation. Keep the legacy router completely out of
+    // the active V2 path; this placeholder exists only for legacy-only code
+    // below and is never permitted to construct a V2 knowledge answer.
+    const capability: CapabilityRoute = v2Enabled
+      ? {
+          capability: 'general_ai', intent: 'v2_owned', entities: capabilityEntity.matches,
+          matchedEntity: preRoutingEntity?.entity ?? null, matchedEntityId: preRoutingEntity?.entityId ?? null,
+          entityMatchType: preRoutingEntity?.route === 'knowledge' ? 'alias' : 'none', requestedOperation: null,
+          requiresCurrentInformation: false, requiresFreshInformation: false, requiresKnowledgeSearch: false,
+          requiresClarification: false, clarificationQuestion: null, confidence: 0,
+          reasonCode: 'AI_BRAIN_V2_OWNS_INTERPRETATION', fallbackUsed: false,
+        }
+      : await routeCapability(latestUserQuestion, { knowledgeMode: requestedStrategy, entityMatches: capabilityEntity.matches, entityAmbiguous: capabilityEntity.ambiguous });
     if(traceSession)await traceSession.update({routing:{capability:capability.capability,reasonCode:capability.reasonCode,confidence:capability.confidence,deterministicOrAI:capability.fallbackUsed?'fallback':'deterministic'},entityResolution:{candidates:capabilityEntity.matches,selectedEntity:capability.matchedEntity,matchType:capability.entityMatchType,confidence:capability.confidence}});
     if (v2Enabled && requestedStrategy !== 'normal') {
       const plannerEntityHints = capabilityEntity.matches.map((match) => ({ type: match.type, name: match.name, id: match.id }));
@@ -263,6 +275,22 @@ export async function POST(req: Request) {
         routing: { capability: executionPlan.capability, reasonCode: executionPlan.plannerReasons.join(','), confidence: executionPlan.confidence, deterministicOrAI: executionPlan.plannerMethod },
         contextResolution: { originalQuery: latestUserQuestion, resolvedQuery: contextResolvedQuery, activeEntityBefore, referenceDetected: Boolean(referenceResolution?.resolved), resolvedReference: referenceResolution?.entity?.name ?? null, activeEntityAfter },
       });
+      if (traceSession) await traceSession.update({
+        routing: {
+          capability: executionPlan.capability,
+          reasonCode: executionPlan.plannerReasons.join(','),
+          confidence: executionPlan.confidence,
+          deterministicOrAI: executionPlan.plannerMethod,
+          pipelineVersion: 'ai-brain-v2-canonical',
+          resolvedEntities: executionPlan.entities,
+          operation: executionPlan.operation,
+          concept: executionPlan.concept,
+          filters: executionPlan.filters ?? {},
+          projection: executionPlan.projection ?? [],
+          outputMode: executionPlan.outputMode ?? 'narrative',
+          legacyKnowledgeConstructionExecuted: false,
+        },
+      });
       if (executionPlan.capability === 'clarification' || capabilityEntity.ambiguous) {
         return new Response(executionPlan.clarificationQuestion ?? formatKnowledgeFacts({ language: language.detectedLanguage, kind: 'clarification' }), {
           headers: answerHeaders({ answerSource: 'clarification', usedFallback: false, confidence: executionPlan.confidence, evaluationDecision: 'clarify' }),
@@ -283,6 +311,7 @@ export async function POST(req: Request) {
             entityName: entity?.name,
             language: language.detectedLanguage,
             visibility: parsed.data.knowledgeMode === 'private' ? 'private' : 'public',
+            plan: executionPlan,
           });
           const structuredSources: Source[] = structured.sources.map((source) => ({
             documentTitle: source.documentTitle,
@@ -334,16 +363,53 @@ export async function POST(req: Request) {
             ragFallbackUsed: structured.ragFallbackUsed,
             notAvailableReason: structured.notAvailableReason,
           });
-          if (structured.status === 'answer' && structured.answer) {
-            return new Response(structured.answer, {
-              headers: answerHeaders({
-                answerSource: 'structured-data',
-                usedFallback: false,
-                confidence: structured.explicitFacts.length ? Math.min(...structured.explicitFacts.map((fact) => fact.confidence)) : 0.94,
-                evaluationDecision: 'answer',
-                entitiesUsed: entity?.id ? [entity.id] : [],
-                factsUsed: structured.explicitFacts.map((fact) => fact.id),
-              }, structuredSources),
+          // Structured retrieval produces source-backed evidence only.  It is
+          // intentionally not allowed to construct a user-visible response;
+          // structured and hybrid paths converge below through the same
+          // Evidence Builder → Composer → Validator pipeline.
+          if (structured.status === 'answer' && structured.explicitFacts.length) {
+            const registry = createDefaultCapabilityRegistry({
+              knowledge: async () => ({
+                status: 'success' as const,
+                capability: 'knowledge' as const,
+                answerSource: 'structured_data' as const,
+                data: { entityName: entity?.name ?? null, selectedValues: structured.finalSelectedValues },
+                supportedFacts: structured.explicitFacts,
+                sources: structured.sources,
+                conflicts: [],
+                fallbackAllowed: false,
+                fallbackReason: null,
+                errorCode: null,
+                traceMetadata: {
+                  confidence: structured.explicitFacts.length ? Math.min(...structured.explicitFacts.map((fact) => fact.confidence)) : 0.94,
+                  responseLanguage: executionPlan.responseLanguage,
+                  entityName: entity?.name ?? null,
+                  operation: executionPlan.operation,
+                  concept: executionPlan.concept,
+                  filters: executionPlan.filters ?? {},
+                  projection: executionPlan.projection ?? [],
+                  outputMode: executionPlan.outputMode ?? 'narrative',
+                },
+              }),
+            });
+            const pipeline = await runEvidencePipeline({
+              userQuery: contextResolvedQuery,
+              plan: executionPlan,
+              context: { requestId: traceSession?.trace.requestId ?? crypto.randomUUID(), conversationId: parsed.data.conversationId, assistantMode: requestedStrategy, abortSignal: req.signal },
+              registry,
+            });
+            const validation = pipeline.validationResult;
+            if (pipeline.status === 'success' && validation?.decision !== 'reject' && pipeline.evidence?.facts.length) {
+              return new Response(pipeline.finalCandidateAnswer, {
+                headers: answerHeaders({
+                  answerSource: 'structured-data', usedFallback: false, confidence: validation?.confidence ?? 0,
+                  evaluationDecision: 'answer', entitiesUsed: entity?.id ? [entity.id] : [],
+                  factsUsed: structured.explicitFacts.map((fact) => fact.id),
+                }, structuredSources),
+              });
+            }
+            return new Response(formatKnowledgeFacts({ language: language.detectedLanguage, kind: 'unavailable' }), {
+              headers: answerHeaders({ answerSource: 'structured-data', usedFallback: false, confidence: validation?.confidence ?? 0, evaluationDecision: 'insufficient' }),
             });
           }
           if (structured.finalUnavailable) {

@@ -173,3 +173,20 @@ test('strictly applies project count, URL, entity, and technology projections', 
   const mongo = query('MongoDB kis project me use kiya?', ['projects']);
   assert.equal(mongo.answer, 'Storefront Three');
 });
+
+test('executes the supplied canonical plan instead of reclassifying the raw wording', () => {
+  const result = structuredFactTesting.answerFor({
+    query: 'unrelated natural-language wording',
+    fields: ['education'],
+    language: 'english',
+    bundle: bundle(),
+    plan: {
+      concept: 'education', operation: 'lookup', filters: { state: 'current' },
+      projection: ['education.degree'], outputMode: 'only_requested_fields', references: [],
+    },
+  });
+  assert.equal(result.status, 'answer');
+  assert.match(result.answer ?? '', /Master of Computer Application/);
+  assert.doesNotMatch(result.answer ?? '', /Bachelor of Commerce/);
+  assert.deepEqual(result.filters.status, ['pursuing', 'active', 'attending']);
+});

@@ -14,6 +14,9 @@ function unavailable(language: string, field: string) {
 function unique(values: string[]) { return [...new Map(values.filter((value) => value.length <= MAX_COMPOSABLE_FACT_LENGTH).map((value) => [value.toLowerCase(), value])).values()]; }
 function factsFor(input: AnswerInput) {
   const field = input.plan.requestedFields[0] ?? '';
+  // A structured engine has already applied plan filters and projection. The
+  // composer must not reinterpret or broaden that selected evidence.
+  if (input.evidence.metadata.answerSource === 'structured_data') return input.evidence.facts;
   if (field === 'projects') return input.evidence.facts.filter((fact) => PROJECT.test(fact));
   if (field === 'education') return input.evidence.facts.filter((fact) => EDUCATION.test(fact));
   return input.evidence.facts;
@@ -33,6 +36,21 @@ export function composeDeterministically(input: AnswerInput): ComposedAnswer {
     return { text: explanation || unavailable(language, 'utility'), answerSource: 'tool', usedFacts: evidence.facts, usedUrls: [], citations: [], confidence: evidence.confidence, warnings: evidence.warnings, language };
   }
   if (evidence.source === 'web') return { text: unavailable(language, 'live web'), answerSource: 'web', usedFacts: [], usedUrls: [], citations: [], confidence: evidence.confidence, warnings: evidence.warnings, language };
+  const structuredData = evidence.metadata.data && typeof evidence.metadata.data === 'object' ? evidence.metadata.data as { entityName?: string | null; selectedValues?: unknown } : null;
+  if (evidence.source === 'knowledge' && plan.operation === 'count') {
+    const selected = Array.isArray(structuredData?.selectedValues) ? structuredData.selectedValues : [];
+    const count = String(selected[0] ?? evidence.facts.length);
+    const subject = structuredData?.entityName ? `${structuredData.entityName} ` : '';
+    const label = plan.concept ?? field ?? 'records';
+    const text = language.toLowerCase().includes('english')
+      ? `${subject}has ${count} documented ${label}.`
+      : `${subject}ke ${count} documented ${label} hain.`;
+    return { text, answerSource: 'knowledge', usedFacts: evidence.facts, usedUrls: [], citations: evidence.citations, confidence: evidence.confidence, warnings: evidence.warnings, language };
+  }
+  if (evidence.source === 'knowledge' && plan.outputMode === 'only_requested_fields' && plan.projection?.includes('url')) {
+    const urls = evidence.urls;
+    return { text: urls.length ? urls.join('\n') : unavailable(language, field), answerSource: 'knowledge', usedFacts: [], usedUrls: urls, citations: urls.length ? evidence.citations : [], confidence: evidence.confidence, warnings: evidence.warnings, language };
+  }
   if (EXACT_FIELDS.has(field)) {
     const text = evidence.urls[0] ?? unavailable(language, field.replace('_', ' '));
     return { text, answerSource: 'knowledge', usedFacts: [], usedUrls: evidence.urls.slice(0, 1), citations: evidence.urls.length ? evidence.citations : [], confidence: evidence.confidence, warnings: evidence.warnings, language };

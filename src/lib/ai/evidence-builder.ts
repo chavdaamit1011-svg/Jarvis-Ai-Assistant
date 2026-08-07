@@ -161,7 +161,12 @@ export function buildEvidence(result: EvidenceInput, options: EvidenceOptions = 
     ? [...result.supportedFacts.flatMap(valuesFromFact), ...rawChunks.map(chunkText)]
     : [];
   const facts = source === 'knowledge'
-    ? extractFieldFacts(sourceValues, requestedFields)
+    // Atomic structured facts are already projected by the structured query
+    // engine. Re-filtering them with chunk-text heuristics can erase valid
+    // names, counts, and URLs, so preserve their exact source-backed values.
+    ? result.answerSource === 'structured_data'
+      ? unique(result.supportedFacts.flatMap(valuesFromFact))
+      : extractFieldFacts(sourceValues, requestedFields)
     : source === 'utility'
       ? unique(result.supportedFacts.flatMap(valuesFromFact).concat(valuesFromFact(record(result.data)?.metadata ?? result.data)))
       : [];
@@ -176,7 +181,9 @@ export function buildEvidence(result: EvidenceInput, options: EvidenceOptions = 
     urls,
     citations: source === 'knowledge' ? citationsFromSources(result.sources) : [],
     rawChunks,
-    metadata: source === 'utility' ? { parsedArguments: record(result.data)?.metadata ?? null, toolResult: result.data } : { capability: result.capability, answerSource: result.answerSource, requestedFields },
+    metadata: source === 'utility'
+      ? { parsedArguments: record(result.data)?.metadata ?? null, toolResult: result.data }
+      : { capability: result.capability, answerSource: result.answerSource, requestedFields, data: result.data, ...record(result.traceMetadata) },
     warnings,
   };
 }
